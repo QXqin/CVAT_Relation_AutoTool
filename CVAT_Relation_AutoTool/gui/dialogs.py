@@ -1,13 +1,14 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+import ttkbootstrap as tb
+from ttkbootstrap.constants import *
 import json
 import pandas as pd
 from config import DEFAULT_CONFIG
 from rules import DEFAULT_RULES
 
 
-class ConfigDialog(tk.Toplevel):
-    """配置对话框"""
+class ConfigDialog(tb.Toplevel):
+    """配置对话框 - 使用ttkbootstrap美化"""
 
     def __init__(self, parent, config):
         super().__init__(parent)
@@ -15,59 +16,104 @@ class ConfigDialog(tk.Toplevel):
         self.geometry("500x400")
         self.config = config
         self.result_config = config.copy()
+
+        # 设置样式 - 直接使用全局样式对象
+        #self.style = parent.style  # 使用父窗口的样式
+
         self.create_widgets()
 
     def create_widgets(self):
-        main_frame = ttk.Frame(self)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        main_frame = tb.Frame(self, padding=20)
+        main_frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(main_frame, text="修改配置", font=("Arial", 14, "bold")).pack(pady=10)
+        # 标题
+        tb.Label(
+            main_frame,
+            text="修改配置",
+            font=("微软雅黑", 14, "bold"),
+            bootstyle="primary"
+        ).pack(pady=10)
 
-        config_frame = tk.LabelFrame(main_frame, text="自动化选项")
+        # 配置选项区域
+        config_frame = tb.Labelframe(
+            main_frame,
+            text="自动化选项",
+            bootstyle="info"
+        )
         config_frame.pack(fill=tk.X, pady=10)
 
+        # 配置选项复选框
         self.sync_var = tk.BooleanVar(value=self.config.get('auto_sync_lifecycle', True))
-        sync_cb = ttk.Checkbutton(
+        sync_cb = tb.Checkbutton(
             config_frame,
             text="自动同步生命周期 (关联自动生成/删除)",
             variable=self.sync_var,
-            onvalue=True, offvalue=False
+            bootstyle="round-toggle",
+            onvalue=True,
+            offvalue=False
         )
-        sync_cb.pack(anchor=tk.W, padx=10, pady=5)
+        sync_cb.pack(anchor=tk.W, padx=15, pady=8, fill=tk.X)
 
         self.skip_var = tk.BooleanVar(value=self.config.get('skip_existing', True))
-        skip_cb = ttk.Checkbutton(
+        skip_cb = tb.Checkbutton(
             config_frame,
             text="跳过已有关系的主体 (避免重复添加)",
             variable=self.skip_var,
-            onvalue=True, offvalue=False
+            bootstyle="round-toggle",
+            onvalue=True,
+            offvalue=False
         )
-        skip_cb.pack(anchor=tk.W, padx=10, pady=5)
+        skip_cb.pack(anchor=tk.W, padx=15, pady=8, fill=tk.X)
 
         self.gen_var = tk.BooleanVar(value=self.config.get('auto_generate_output', True))
-        gen_cb = ttk.Checkbutton(
+        gen_cb = tb.Checkbutton(
             config_frame,
             text="自动生成输出文件路径",
             variable=self.gen_var,
-            onvalue=True, offvalue=False
+            bootstyle="round-toggle",
+            onvalue=True,
+            offvalue=False
         )
-        gen_cb.pack(anchor=tk.W, padx=10, pady=5)
+        gen_cb.pack(anchor=tk.W, padx=15, pady=8, fill=tk.X)
 
         self.backup_var = tk.BooleanVar(value=self.config.get('backup_original', True))
-        backup_cb = ttk.Checkbutton(
+        backup_cb = tb.Checkbutton(
             config_frame,
             text="处理前备份原始文件",
             variable=self.backup_var,
-            onvalue=True, offvalue=False
+            bootstyle="round-toggle",
+            onvalue=True,
+            offvalue=False
         )
-        backup_cb.pack(anchor=tk.W, padx=10, pady=5)
+        backup_cb.pack(anchor=tk.W, padx=15, pady=8, fill=tk.X)
 
-        button_frame = ttk.Frame(main_frame)
+        # 按钮区域
+        button_frame = tb.Frame(main_frame)
         button_frame.pack(fill=tk.X, pady=20)
 
-        ttk.Button(button_frame, text="保存配置", command=self.save_config, width=12).pack(side=tk.LEFT, padx=10)
-        ttk.Button(button_frame, text="恢复默认", command=self.reset_defaults, width=12).pack(side=tk.LEFT, padx=10)
-        ttk.Button(button_frame, text="关闭", command=self.destroy, width=12).pack(side=tk.RIGHT, padx=10)
+        tb.Button(
+            button_frame,
+            text="保存配置",
+            command=self.save_config,
+            width=12,
+            bootstyle="success"
+        ).pack(side=tk.LEFT, padx=10)
+
+        tb.Button(
+            button_frame,
+            text="恢复默认",
+            command=self.reset_defaults,
+            width=12,
+            bootstyle="warning"
+        ).pack(side=tk.LEFT, padx=10)
+
+        tb.Button(
+            button_frame,
+            text="关闭",
+            command=self.destroy,
+            width=12,
+            bootstyle="danger"
+        ).pack(side=tk.RIGHT, padx=10)
 
     def save_config(self):
         self.result_config = {
@@ -78,7 +124,7 @@ class ConfigDialog(tk.Toplevel):
         }
         with open("config.json", "w") as f:
             json.dump(self.result_config, f, indent=2)
-        messagebox.showinfo("成功", "配置已保存！")
+        tb.dialogs.Messagebox.show_info("配置已保存！", "成功", parent=self)
         self.destroy()
 
     def reset_defaults(self):
@@ -86,53 +132,113 @@ class ConfigDialog(tk.Toplevel):
         self.skip_var.set(DEFAULT_CONFIG['skip_existing'])
         self.gen_var.set(DEFAULT_CONFIG['auto_generate_output'])
         self.backup_var.set(DEFAULT_CONFIG['backup_original'])
-        messagebox.showinfo("提示", "已恢复默认配置")
+        tb.dialogs.Messagebox.show_info("已恢复默认配置", "提示", parent=self)
 
 
-class RuleManager(tk.Toplevel):
-    """规则管理对话框"""
+class RuleManager(tb.Toplevel):
+    """规则管理对话框 - 使用ttkbootstrap美化"""
 
     def __init__(self, parent, rules):
         super().__init__(parent)
         self.parent = parent
         self.rules = rules
         self.title("管理关系谓词规则")
-        self.geometry("600x500")
+        self.geometry("700x550")
+
+        # 使用父窗口的样式
+        #self.style = parent.style
 
         self.create_widgets()
         self.populate_rules()
 
     def create_widgets(self):
-        main_frame = ttk.Frame(self)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        main_frame = tb.Frame(self, padding=20)
+        main_frame.pack(fill=tk.BOTH, expand=True)
 
-        header = ttk.Label(main_frame, text="管理关系谓词规则", font=("Arial", 14, "bold"))
-        header.pack(fill=tk.X, pady=(0, 15))
+        # 标题
+        tb.Label(
+            main_frame,
+            text="管理关系谓词规则",
+            font=("微软雅黑", 14, "bold"),
+            bootstyle="primary"
+        ).pack(fill=tk.X, pady=(0, 15))
 
-        list_frame = ttk.LabelFrame(main_frame, text="当前规则")
+        # 规则列表区域
+        list_frame = tb.Labelframe(
+            main_frame,
+            text="当前规则",
+            bootstyle="info"
+        )
         list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
 
+        # 规则表格
         columns = ("object_type", "predicate")
-        self.tree = ttk.Treeview(list_frame, columns=columns, show="headings", selectmode="browse")
+        self.tree = tb.Treeview(
+            list_frame,
+            columns=columns,
+            show="headings",
+            selectmode="browse",
+            bootstyle="light"
+        )
         self.tree.heading("object_type", text="对象类型", anchor=tk.W)
         self.tree.heading("predicate", text="谓词", anchor=tk.W)
         self.tree.column("object_type", width=250, stretch=tk.YES)
         self.tree.column("predicate", width=250, stretch=tk.YES)
 
-        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        scrollbar = tb.Scrollbar(
+            list_frame,
+            orient=tk.VERTICAL,
+            command=self.tree.yview,
+            bootstyle="round"
+        )
         self.tree.configure(yscrollcommand=scrollbar.set)
 
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=5)
 
-        button_frame = ttk.Frame(main_frame)
+        # 按钮区域
+        button_frame = tb.Frame(main_frame)
         button_frame.pack(fill=tk.X, pady=15)
 
-        ttk.Button(button_frame, text="添加规则", command=self.add_rule, width=12).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="编辑规则", command=self.edit_rule, width=12).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="删除规则", command=self.delete_rule, width=12).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="保存并关闭", command=self.save_and_close, width=12).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(button_frame, text="重置默认", command=self.reset_defaults, width=12).pack(side=tk.RIGHT, padx=5)
+        tb.Button(
+            button_frame,
+            text="添加规则",
+            command=self.add_rule,
+            width=12,
+            bootstyle="success"
+        ).pack(side=tk.LEFT, padx=5)
+
+        tb.Button(
+            button_frame,
+            text="编辑规则",
+            command=self.edit_rule,
+            width=12,
+            bootstyle="primary"
+        ).pack(side=tk.LEFT, padx=5)
+
+        tb.Button(
+            button_frame,
+            text="删除规则",
+            command=self.delete_rule,
+            width=12,
+            bootstyle="danger"
+        ).pack(side=tk.LEFT, padx=5)
+
+        tb.Button(
+            button_frame,
+            text="保存并关闭",
+            command=self.save_and_close,
+            width=12,
+            bootstyle="success-outline"
+        ).pack(side=tk.RIGHT, padx=5)
+
+        tb.Button(
+            button_frame,
+            text="重置默认",
+            command=self.reset_defaults,
+            width=12,
+            bootstyle="warning-outline"
+        ).pack(side=tk.RIGHT, padx=5)
 
     def populate_rules(self):
         for item in self.tree.get_children():
@@ -141,96 +247,140 @@ class RuleManager(tk.Toplevel):
             self.tree.insert("", tk.END, values=(obj_type, predicate))
 
     def add_rule(self):
-        add_dialog = tk.Toplevel(self)
+        add_dialog = tb.Toplevel(self)
         add_dialog.title("添加规则")
         add_dialog.geometry("400x200")
+        add_dialog.resizable(False, False)
 
-        form_frame = ttk.Frame(add_dialog)
-        form_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        form_frame = tb.Frame(add_dialog, padding=20)
+        form_frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(form_frame, text="对象类型:").grid(row=0, column=0, padx=5, pady=10, sticky=tk.W)
-        obj_type_entry = ttk.Entry(form_frame, width=30)
+        # 对象类型输入
+        tb.Label(form_frame, text="对象类型:").grid(row=0, column=0, padx=5, pady=10, sticky=tk.W)
+        obj_type_entry = tb.Entry(form_frame, width=30, bootstyle="primary")
         obj_type_entry.grid(row=0, column=1, padx=5, pady=10, sticky=tk.EW)
 
-        ttk.Label(form_frame, text="谓词:").grid(row=1, column=0, padx=5, pady=10, sticky=tk.W)
-        predicate_entry = ttk.Entry(form_frame, width=30)
+        # 谓词输入
+        tb.Label(form_frame, text="谓词:").grid(row=1, column=0, padx=5, pady=10, sticky=tk.W)
+        predicate_entry = tb.Entry(form_frame, width=30, bootstyle="primary")
         predicate_entry.grid(row=1, column=1, padx=5, pady=10, sticky=tk.EW)
 
-        button_frame = ttk.Frame(form_frame)
+        # 按钮区域
+        button_frame = tb.Frame(form_frame)
         button_frame.grid(row=2, column=0, columnspan=2, pady=20)
 
         def save_rule():
             obj_type = obj_type_entry.get().strip()
             predicate = predicate_entry.get().strip()
             if not obj_type or not predicate:
-                messagebox.showerror("错误", "对象类型和谓词不能为空")
+                tb.dialogs.Messagebox.show_error("对象类型和谓词不能为空", "错误", parent=add_dialog)
                 return
             if obj_type in self.rules:
-                messagebox.showerror("错误", f"对象类型 '{obj_type}' 已存在")
+                tb.dialogs.Messagebox.show_error(f"对象类型 '{obj_type}' 已存在", "错误", parent=add_dialog)
                 return
             self.rules[obj_type] = predicate
             self.populate_rules()
             add_dialog.destroy()
 
-        ttk.Button(button_frame, text="保存", command=save_rule).pack(side=tk.LEFT, padx=10)
-        ttk.Button(button_frame, text="取消", command=add_dialog.destroy).pack(side=tk.RIGHT, padx=10)
+        tb.Button(
+            button_frame,
+            text="保存",
+            command=save_rule,
+            bootstyle="success"
+        ).pack(side=tk.LEFT, padx=10)
+
+        tb.Button(
+            button_frame,
+            text="取消",
+            command=add_dialog.destroy,
+            bootstyle="secondary"
+        ).pack(side=tk.RIGHT, padx=10)
 
     def edit_rule(self):
         selected = self.tree.selection()
         if not selected:
-            messagebox.showwarning("提示", "请先选择要编辑的规则")
+            tb.dialogs.Messagebox.show_warning("请先选择要编辑的规则", "提示", parent=self)
             return
         item = selected[0]
         values = self.tree.item(item, "values")
         obj_type, predicate = values
 
-        edit_dialog = tk.Toplevel(self)
+        edit_dialog = tb.Toplevel(self)
         edit_dialog.title("编辑规则")
         edit_dialog.geometry("400x200")
+        edit_dialog.resizable(False, False)
 
-        form_frame = ttk.Frame(edit_dialog)
-        form_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        form_frame = tb.Frame(edit_dialog, padding=20)
+        form_frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(form_frame, text="对象类型:").grid(row=0, column=0, padx=5, pady=10, sticky=tk.W)
-        obj_type_label = ttk.Label(form_frame, text=obj_type, font=("Arial", 10, "bold"))
-        obj_type_label.grid(row=0, column=1, padx=5, pady=10, sticky=tk.W)
+        # 对象类型显示
+        tb.Label(form_frame, text="对象类型:").grid(row=0, column=0, padx=5, pady=10, sticky=tk.W)
+        tb.Label(
+            form_frame,
+            text=obj_type,
+            font=("微软雅黑", 10, "bold"),
+            bootstyle="primary"
+        ).grid(row=0, column=1, padx=5, pady=10, sticky=tk.W)
 
-        ttk.Label(form_frame, text="谓词:").grid(row=1, column=0, padx=5, pady=10, sticky=tk.W)
-        predicate_entry = ttk.Entry(form_frame, width=30)
+        # 谓词编辑
+        tb.Label(form_frame, text="谓词:").grid(row=1, column=0, padx=5, pady=10, sticky=tk.W)
+        predicate_entry = tb.Entry(form_frame, width=30, bootstyle="primary")
         predicate_entry.insert(0, predicate)
         predicate_entry.grid(row=1, column=1, padx=5, pady=10, sticky=tk.EW)
 
-        button_frame = ttk.Frame(form_frame)
+        # 按钮区域
+        button_frame = tb.Frame(form_frame)
         button_frame.grid(row=2, column=0, columnspan=2, pady=20)
 
         def save_edit():
             new_predicate = predicate_entry.get().strip()
             if not new_predicate:
-                messagebox.showerror("错误", "谓词不能为空")
+                tb.dialogs.Messagebox.show_error("谓词不能为空", "错误", parent=edit_dialog)
                 return
             self.rules[obj_type] = new_predicate
             self.populate_rules()
             edit_dialog.destroy()
 
-        ttk.Button(button_frame, text="保存", command=save_edit).pack(side=tk.LEFT, padx=10)
-        ttk.Button(button_frame, text="取消", command=edit_dialog.destroy).pack(side=tk.RIGHT, padx=10)
+        tb.Button(
+            button_frame,
+            text="保存",
+            command=save_edit,
+            bootstyle="success"
+        ).pack(side=tk.LEFT, padx=10)
+
+        tb.Button(
+            button_frame,
+            text="取消",
+            command=edit_dialog.destroy,
+            bootstyle="secondary"
+        ).pack(side=tk.RIGHT, padx=10)
 
     def delete_rule(self):
         selected = self.tree.selection()
         if not selected:
-            messagebox.showwarning("提示", "请先选择要删除的规则")
+            tb.dialogs.Messagebox.show_warning("请先选择要删除的规则", "提示", parent=self)
             return
         item = selected[0]
         values = self.tree.item(item, "values")
         obj_type, _ = values
-        if not messagebox.askyesno("确认删除", f"确定要删除对象类型 '{obj_type}' 的规则？"):
+
+        if not tb.dialogs.Messagebox.yesno(
+                f"确定要删除对象类型 '{obj_type}' 的规则？",
+                "确认删除",
+                parent=self
+        ):
             return
+
         if obj_type in self.rules:
             del self.rules[obj_type]
             self.populate_rules()
 
     def reset_defaults(self):
-        if not messagebox.askyesno("确认重置", "确定要恢复为默认规则？"):
+        if not tb.dialogs.Messagebox.yesno(
+                "确定要恢复为默认规则？",
+                "确认重置",
+                parent=self
+        ):
             return
         self.rules = DEFAULT_RULES.copy()
         self.populate_rules()
@@ -241,11 +391,12 @@ class RuleManager(tk.Toplevel):
         self.destroy()
 
 
-class CustomRelationDialog(tk.Toplevel):
-    """自定义关系点对话框 - 改进版"""
+class CustomRelationDialog(tb.Toplevel):
+    """自定义关系点对话框 - 改进版 - 使用ttkbootstrap美化"""
 
     def __init__(self, parent, input_file, root_et, entity_classes, predicates, category_to_trackids, custom_relations):
         super().__init__(parent)
+
         self.parent = parent
         self.input_file = input_file
         self.root_et = root_et
@@ -253,9 +404,11 @@ class CustomRelationDialog(tk.Toplevel):
         self.predicates = predicates
         self.category_to_trackids = category_to_trackids
         self.custom_relations = custom_relations
-
         self.title("自定义关系点模式")
-        self.geometry("650x550")
+        self.geometry("700x600")
+
+        # 使用父窗口的样式
+        #self.style = parent.style
 
         self.temp_relations = []  # 临时存储本次添加的关系
         self.filtered_entity_classes = entity_classes[:]  # 实体类别过滤缓存
@@ -264,139 +417,218 @@ class CustomRelationDialog(tk.Toplevel):
         self.create_widgets()
 
     def create_widgets(self):
-        ttk.Label(self, text="添加自定义关系点", font=("Arial", 14, "bold")).pack(pady=10)
+        main_frame = tb.Frame(self, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 标题
+        tb.Label(
+            main_frame,
+            text="添加自定义关系点",
+            font=("微软雅黑", 14, "bold"),
+            bootstyle="primary"
+        ).pack(pady=(0, 10))
 
         # 使用notebook管理主体和客体输入
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill=tk.X, padx=10, pady=10)
+        self.notebook = tb.Notebook(main_frame, bootstyle="primary")
+        self.notebook.pack(fill=tk.X, padx=5, pady=5)
 
         # 主体框架
-        subject_frame = ttk.Frame(self.notebook)
+        subject_frame = tb.Frame(self.notebook)
         self.notebook.add(subject_frame, text="主体")
 
         # --- 主体输入区域 ---
-        subject_input_frame = ttk.LabelFrame(subject_frame, text="主体选择")
+        subject_input_frame = tb.Labelframe(
+            subject_frame,
+            text="主体选择",
+            bootstyle="info"
+        )
         subject_input_frame.pack(fill=tk.X, padx=5, pady=5)
 
         # 选择方式标签
-        ttk.Label(subject_input_frame, text="选择方式:").pack(side=tk.LEFT, padx=(0, 5))
+        tb.Label(
+            subject_input_frame,
+            text="选择方式:",
+            bootstyle="inverse-light"
+        ).pack(side=tk.LEFT, padx=(0, 5))
 
         # 选择方式单选按钮
         self.subject_selector = tk.StringVar(value="by_class")
 
-        rb_frame = ttk.Frame(subject_input_frame)
+        rb_frame = tb.Frame(subject_input_frame)
         rb_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        ttk.Radiobutton(rb_frame, text="按类别", variable=self.subject_selector,
-                        value="by_class", command=self.update_subject_inputs).pack(side=tk.LEFT)
-        ttk.Radiobutton(rb_frame, text="直接输入ID", variable=self.subject_selector,
-                        value="by_id", command=self.update_subject_inputs).pack(side=tk.LEFT, padx=(10, 0))
+        tb.Radiobutton(
+            rb_frame,
+            text="按类别",
+            variable=self.subject_selector,
+            value="by_class",
+            command=self.update_subject_inputs,
+            bootstyle="info-toolbutton"
+        ).pack(side=tk.LEFT)
+
+        tb.Radiobutton(
+            rb_frame,
+            text="直接输入ID",
+            variable=self.subject_selector,
+            value="by_id",
+            command=self.update_subject_inputs,
+            bootstyle="info-toolbutton"
+        ).pack(side=tk.LEFT, padx=(10, 0))
 
         # 主体类别输入区域
-        self.subject_cls_frame = ttk.Frame(subject_frame)
+        self.subject_cls_frame = tb.Frame(subject_frame)
         self.subject_cls_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        ttk.Label(self.subject_cls_frame, text="实体类别 (输入筛选):").pack(side=tk.LEFT, padx=(0, 5))
+        tb.Label(
+            self.subject_cls_frame,
+            text="实体类别 (输入筛选):",
+            bootstyle="inverse-light"
+        ).pack(side=tk.LEFT, padx=(0, 5))
 
         self.subject_cls_var = tk.StringVar()
-        self.subject_cls_combo = ttk.Combobox(
+        self.subject_cls_combo = tb.Combobox(
             self.subject_cls_frame,
             textvariable=self.subject_cls_var,
-            values=self.entity_classes
+            values=self.entity_classes,
+            bootstyle="primary"
         )
-        self.subject_cls_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.subject_cls_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         self.subject_cls_combo.bind("<KeyRelease>", self.on_subject_cls_keyrelease)
         self.subject_cls_combo.bind("<<ComboboxSelected>>", self.on_subject_cls_change)
 
         # 主体类别选择后的ID选择
-        self.subject_id_frame = ttk.Frame(subject_frame)
+        self.subject_id_frame = tb.Frame(subject_frame)
         self.subject_id_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        ttk.Label(self.subject_id_frame, text="选择主体ID:").pack(side=tk.LEFT, padx=(0, 5))
+        tb.Label(
+            self.subject_id_frame,
+            text="选择主体ID:",
+            bootstyle="inverse-light"
+        ).pack(side=tk.LEFT, padx=(0, 5))
 
         self.subject_id_var = tk.StringVar()
-        self.subject_id_combo = ttk.Combobox(
+        self.subject_id_combo = tb.Combobox(
             self.subject_id_frame,
-            textvariable=self.subject_id_var
+            textvariable=self.subject_id_var,
+            bootstyle="primary"
         )
-        self.subject_id_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.subject_id_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         self.subject_id_combo.bind("<KeyRelease>", self.on_subject_id_keyrelease)
 
         # 直接输入ID的控件
-        self.direct_id_frame = ttk.Frame(subject_frame)
+        self.direct_id_frame = tb.Frame(subject_frame)
         self.direct_id_frame.pack(fill=tk.X, padx=5, pady=5)
         self.direct_id_frame.pack_forget()  # 初始隐藏
 
-        ttk.Label(self.direct_id_frame, text="输入主体ID:").pack(side=tk.LEFT, padx=(0, 5))
+        tb.Label(
+            self.direct_id_frame,
+            text="输入主体ID:",
+            bootstyle="inverse-light"
+        ).pack(side=tk.LEFT, padx=(0, 5))
 
         self.subject_direct_id_var = tk.StringVar()
-        ttk.Entry(self.direct_id_frame, textvariable=self.subject_direct_id_var).pack(side=tk.LEFT, fill=tk.X,
-                                                                                      expand=True)
+        tb.Entry(
+            self.direct_id_frame,
+            textvariable=self.subject_direct_id_var,
+            bootstyle="primary"
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
 
         # 初始化输入状态
         self.update_subject_inputs()
 
         # --- 客体框架 ---
-        object_frame = ttk.Frame(self.notebook)
+        object_frame = tb.Frame(self.notebook)
         self.notebook.add(object_frame, text="客体")
 
         # 客体类别输入
-        object_cls_frame = ttk.Frame(object_frame)
+        object_cls_frame = tb.Frame(object_frame)
         object_cls_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        ttk.Label(object_cls_frame, text="客体类别 (输入筛选):").pack(side=tk.LEFT, padx=(0, 5))
+        tb.Label(
+            object_cls_frame,
+            text="客体类别 (输入筛选):",
+            bootstyle="inverse-light"
+        ).pack(side=tk.LEFT, padx=(0, 5))
 
         self.object_cls_var = tk.StringVar()
-        self.object_cls_combo = ttk.Combobox(
+        self.object_cls_combo = tb.Combobox(
             object_cls_frame,
             textvariable=self.object_cls_var,
-            values=self.entity_classes
+            values=self.entity_classes,
+            bootstyle="primary"
         )
-        self.object_cls_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.object_cls_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         self.object_cls_combo.bind("<KeyRelease>", self.on_object_cls_keyrelease)
         self.object_cls_combo.bind("<<ComboboxSelected>>", self.on_object_cls_change)
 
         # 客体ID选择
-        object_id_frame = ttk.Frame(object_frame)
+        object_id_frame = tb.Frame(object_frame)
         object_id_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        ttk.Label(object_id_frame, text="选择客体ID:").pack(side=tk.LEFT, padx=(0, 5))
+        tb.Label(
+            object_id_frame,
+            text="选择客体ID:",
+            bootstyle="inverse-light"
+        ).pack(side=tk.LEFT, padx=(0, 5))
 
         self.object_id_var = tk.StringVar()
-        self.object_id_combo = ttk.Combobox(
+        self.object_id_combo = tb.Combobox(
             object_id_frame,
-            textvariable=self.object_id_var
+            textvariable=self.object_id_var,
+            bootstyle="primary"
         )
-        self.object_id_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.object_id_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         self.object_id_combo.bind("<KeyRelease>", self.on_object_id_keyrelease)
 
         # --- 谓词框架 ---
-        pred_frame = ttk.Frame(self.notebook)
+        pred_frame = tb.Frame(self.notebook)
         self.notebook.add(pred_frame, text="谓词")
 
-        pred_input_frame = ttk.Frame(pred_frame)
+        pred_input_frame = tb.Frame(pred_frame)
         pred_input_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        ttk.Label(pred_input_frame, text="选择谓词 (输入筛选):").pack(side=tk.LEFT, padx=(0, 5))
+        tb.Label(
+            pred_input_frame,
+            text="选择谓词 (输入筛选):",
+            bootstyle="inverse-light"
+        ).pack(side=tk.LEFT, padx=(0, 5))
 
         self.pred_var = tk.StringVar()
-        self.pred_combo = ttk.Combobox(
+        self.pred_combo = tb.Combobox(
             pred_input_frame,
             textvariable=self.pred_var,
-            values=self.predicates
+            values=self.predicates,
+            bootstyle="primary"
         )
-        self.pred_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.pred_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         self.pred_combo.bind("<KeyRelease>", self.on_pred_keyrelease)
 
         # --- 添加到列表按钮和临时关系列表 ---
-        add_btn = ttk.Button(self, text="添加到列表", width=12, command=self.on_add)
-        add_btn.pack(pady=(10, 0))
+        add_btn = tb.Button(
+            main_frame,
+            text="添加到列表",
+            width=15,
+            command=self.on_add,
+            bootstyle="success"
+        )
+        add_btn.pack(pady=(10, 5))
+
+        # 关系列表
+        tree_frame = tb.Labelframe(
+            main_frame,
+            text="已添加的关系",
+            bootstyle="info"
+        )
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         cols = ("subject_id", "object_id", "predicate")
-        tree_frame = ttk.Frame(self)
-        tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-
-        self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings", height=8)
+        self.tree = tb.Treeview(
+            tree_frame,
+            columns=cols,
+            show="headings",
+            height=8,
+            bootstyle="light"
+        )
         self.tree.heading("subject_id", text="主体 ID")
         self.tree.heading("object_id", text="客体 ID")
         self.tree.heading("predicate", text="谓词")
@@ -404,22 +636,45 @@ class CustomRelationDialog(tk.Toplevel):
         self.tree.column("object_id", width=80, anchor=tk.CENTER)
         self.tree.column("predicate", width=180, anchor=tk.W)
 
-        vsb = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        vsb = tb.Scrollbar(
+            tree_frame,
+            orient=tk.VERTICAL,
+            command=self.tree.yview,
+            bootstyle="round"
+        )
         self.tree.configure(yscrollcommand=vsb.set)
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y, pady=5)
 
         # "删除选中"按钮
-        del_btn = ttk.Button(self, text="删除选中关系", width=15, command=self.on_delete)
-        del_btn.pack(pady=(0, 5))
+        del_btn = tb.Button(
+            main_frame,
+            text="删除选中关系",
+            width=15,
+            command=self.on_delete,
+            bootstyle="danger"
+        )
+        del_btn.pack(pady=(0, 10))
 
         # "确定"和"取消"按钮
-        bottom_frame = ttk.Frame(self)
-        bottom_frame.pack(fill=tk.X, pady=10, padx=10)
-        confirm_btn = ttk.Button(bottom_frame, text="确定", width=12, command=self.on_confirm)
-        confirm_btn.pack(side=tk.RIGHT, padx=5)
-        cancel_btn = ttk.Button(bottom_frame, text="取消", width=12, command=self.destroy)
-        cancel_btn.pack(side=tk.RIGHT, padx=5)
+        bottom_frame = tb.Frame(main_frame)
+        bottom_frame.pack(fill=tk.X, pady=5, padx=5)
+
+        tb.Button(
+            bottom_frame,
+            text="确定",
+            width=12,
+            command=self.on_confirm,
+            bootstyle="success"
+        ).pack(side=tk.RIGHT, padx=5)
+
+        tb.Button(
+            bottom_frame,
+            text="取消",
+            width=12,
+            command=self.destroy,
+            bootstyle="secondary"
+        ).pack(side=tk.RIGHT, padx=5)
 
     def update_subject_inputs(self):
         """根据选择方式更新主体输入界面"""
@@ -511,34 +766,34 @@ class CustomRelationDialog(tk.Toplevel):
         if self.subject_selector.get() == "by_class":
             subj_id = self.subject_id_var.get().strip()
             if not subj_id:
-                messagebox.showerror("错误", "请选择主体类别并指定主体ID")
+                tb.dialogs.Messagebox.show_error("请选择主体类别并指定主体ID", "错误", parent=self)
                 return
         else:
             subj_id = self.subject_direct_id_var.get().strip()
             if not subj_id:
-                messagebox.showerror("错误", "请输入主体ID")
+                tb.dialogs.Messagebox.show_error("请输入主体ID", "错误", parent=self)
                 return
             try:
                 int(subj_id)  # 验证是数字
             except ValueError:
-                messagebox.showerror("错误", "主体ID必须是数字")
+                tb.dialogs.Messagebox.show_error("主体ID必须是数字", "错误", parent=self)
                 return
 
         # 获取客体ID
         obj_id = self.object_id_var.get().strip()
         if not obj_id:
-            messagebox.showerror("错误", "请选择客体类别并指定客体ID")
+            tb.dialogs.Messagebox.show_error("请选择客体类别并指定客体ID", "错误", parent=self)
             return
         try:
             int(obj_id)  # 验证是数字
         except ValueError:
-            messagebox.showerror("错误", "客体ID必须是数字")
+            tb.dialogs.Messagebox.show_error("客体ID必须是数字", "错误", parent=self)
             return
 
         # 获取谓词
         pred = self.pred_var.get().strip()
         if not pred:
-            messagebox.showerror("错误", "请选择或输入谓词")
+            tb.dialogs.Messagebox.show_error("请选择或输入谓词", "错误", parent=self)
             return
 
         # 添加到临时列表和树视图
@@ -565,7 +820,7 @@ class CustomRelationDialog(tk.Toplevel):
         """删除选中行"""
         sel = self.tree.selection()
         if not sel:
-            messagebox.showwarning("提示", "请先选择要删除的行")
+            tb.dialogs.Messagebox.show_warning("请先选择要删除的行", "提示", parent=self)
             return
         for it in sel:
             vals = self.tree.item(it, "values")
@@ -584,5 +839,9 @@ class CustomRelationDialog(tk.Toplevel):
                 self.custom_relations[subj_id] = []
             self.custom_relations[subj_id].append((obj_id, pred))
 
-        messagebox.showinfo("提示", "自定义关系已记录，稍后执行自动标注时会一起写入到输出文件")
+        tb.dialogs.Messagebox.show_info(
+            "自定义关系已记录，稍后执行自动标注时会一起写入到输出文件",
+            "提示",
+            parent=self
+        )
         self.destroy()
