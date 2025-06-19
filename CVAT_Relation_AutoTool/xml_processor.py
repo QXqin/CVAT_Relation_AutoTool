@@ -110,9 +110,14 @@ def add_auto_relations(root, rules, config, max_id, position_manager, progress_c
     processed = 0
     added_count = 0
 
-    # 过滤掉已经有关系点的主体
-    existing_relations = {track.get('subject_id') for track in root.findall('track')
-                          if track.get('label') == "Relation" and track.get('subject_id')}
+    # 修复：正确收集已有关系点的主体ID
+    existing_relations = set()
+    for track in root.findall('track'):
+        if track.get('label') == "Relation":
+            for points in track.findall('points'):
+                for attr in points.findall('attribute'):
+                    if attr.get('name') == 'subject_id' and attr.text:
+                        existing_relations.add(attr.text)
 
     for track in all_tracks:
         track_id = track.get('id')
@@ -120,6 +125,9 @@ def add_auto_relations(root, rules, config, max_id, position_manager, progress_c
         # 跳过已经有关系点的主体
         if config.get("skip_existing", True) and track_id in existing_relations:
             processed += 1
+            if progress_callback:
+                progress = int(processed / total_tracks * 90) + 5
+                progress_callback(progress, f"跳过已有关系: {track.get('label')} (ID:{track_id})")
             continue
 
         label = track.get('label').lower()

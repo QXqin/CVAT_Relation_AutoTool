@@ -405,10 +405,13 @@ class CustomRelationDialog(tb.Toplevel):
         self.category_to_trackids = category_to_trackids
         self.custom_relations = custom_relations
         self.title("自定义关系点模式")
-        self.geometry("700x600")
+        self.geometry("900x650")  # 增加宽度以容纳更多列
 
-        # 使用父窗口的样式
-        #self.style = parent.style
+        # 构建ID到类别的映射字典
+        self.id_to_category = {}
+        for category, track_ids in category_to_trackids.items():
+            for track_id in track_ids:
+                self.id_to_category[track_id] = category
 
         self.temp_relations = []  # 临时存储本次添加的关系
         self.filtered_entity_classes = entity_classes[:]  # 实体类别过滤缓存
@@ -493,8 +496,8 @@ class CustomRelationDialog(tb.Toplevel):
             bootstyle="primary"
         )
         self.subject_cls_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self.subject_cls_combo.bind("<KeyRelease>", self.on_subject_cls_keyrelease)
-        self.subject_cls_combo.bind("<<ComboboxSelected>>", self.on_subject_cls_change)
+        self.subject_cls_combo.bind("<KeyRelease>", self.on_combobox_keyrelease)
+        self.subject_cls_combo.bind("<<ComboboxSelected>>", self.on_combobox_selected)
 
         # 主体类别选择后的ID选择
         self.subject_id_frame = tb.Frame(subject_frame)
@@ -513,7 +516,8 @@ class CustomRelationDialog(tb.Toplevel):
             bootstyle="primary"
         )
         self.subject_id_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self.subject_id_combo.bind("<KeyRelease>", self.on_subject_id_keyrelease)
+        self.subject_id_combo.bind("<KeyRelease>", self.on_combobox_keyrelease)
+        self.subject_id_combo.bind("<<ComboboxSelected>>", self.on_combobox_selected)
 
         # 直接输入ID的控件
         self.direct_id_frame = tb.Frame(subject_frame)
@@ -527,11 +531,12 @@ class CustomRelationDialog(tb.Toplevel):
         ).pack(side=tk.LEFT, padx=(0, 5))
 
         self.subject_direct_id_var = tk.StringVar()
-        tb.Entry(
+        self.subject_direct_entry = tb.Entry(
             self.direct_id_frame,
             textvariable=self.subject_direct_id_var,
             bootstyle="primary"
-        ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        )
+        self.subject_direct_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
 
         # 初始化输入状态
         self.update_subject_inputs()
@@ -558,8 +563,8 @@ class CustomRelationDialog(tb.Toplevel):
             bootstyle="primary"
         )
         self.object_cls_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self.object_cls_combo.bind("<KeyRelease>", self.on_object_cls_keyrelease)
-        self.object_cls_combo.bind("<<ComboboxSelected>>", self.on_object_cls_change)
+        self.object_cls_combo.bind("<KeyRelease>", self.on_combobox_keyrelease)
+        self.object_cls_combo.bind("<<ComboboxSelected>>", self.on_combobox_selected)
 
         # 客体ID选择
         object_id_frame = tb.Frame(object_frame)
@@ -578,7 +583,8 @@ class CustomRelationDialog(tb.Toplevel):
             bootstyle="primary"
         )
         self.object_id_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self.object_id_combo.bind("<KeyRelease>", self.on_object_id_keyrelease)
+        self.object_id_combo.bind("<KeyRelease>", self.on_combobox_keyrelease)
+        self.object_id_combo.bind("<<ComboboxSelected>>", self.on_combobox_selected)
 
         # --- 谓词框架 ---
         pred_frame = tb.Frame(self.notebook)
@@ -601,7 +607,8 @@ class CustomRelationDialog(tb.Toplevel):
             bootstyle="primary"
         )
         self.pred_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self.pred_combo.bind("<KeyRelease>", self.on_pred_keyrelease)
+        self.pred_combo.bind("<KeyRelease>", self.on_combobox_keyrelease)
+        self.pred_combo.bind("<<ComboboxSelected>>", self.on_combobox_selected)
 
         # --- 添加到列表按钮和临时关系列表 ---
         add_btn = tb.Button(
@@ -621,7 +628,8 @@ class CustomRelationDialog(tb.Toplevel):
         )
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        cols = ("subject_id", "object_id", "predicate")
+        # 添加主体类别列
+        cols = ("subject_id", "subject_class", "object_id", "predicate")
         self.tree = tb.Treeview(
             tree_frame,
             columns=cols,
@@ -630,9 +638,11 @@ class CustomRelationDialog(tb.Toplevel):
             bootstyle="light"
         )
         self.tree.heading("subject_id", text="主体 ID")
+        self.tree.heading("subject_class", text="主体类别")
         self.tree.heading("object_id", text="客体 ID")
         self.tree.heading("predicate", text="谓词")
         self.tree.column("subject_id", width=80, anchor=tk.CENTER)
+        self.tree.column("subject_class", width=120, anchor=tk.W)
         self.tree.column("object_id", width=80, anchor=tk.CENTER)
         self.tree.column("predicate", width=180, anchor=tk.W)
 
@@ -642,9 +652,16 @@ class CustomRelationDialog(tb.Toplevel):
             command=self.tree.yview,
             bootstyle="round"
         )
-        self.tree.configure(yscrollcommand=vsb.set)
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        hsb = tb.Scrollbar(
+            tree_frame,
+            orient=tk.HORIZONTAL,
+            command=self.tree.xview,
+            bootstyle="round"
+        )
+        self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        self.tree.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=5)
         vsb.pack(side=tk.RIGHT, fill=tk.Y, pady=5)
+        hsb.pack(side=tk.BOTTOM, fill=tk.X, padx=5)
 
         # "删除选中"按钮
         del_btn = tb.Button(
@@ -676,6 +693,76 @@ class CustomRelationDialog(tb.Toplevel):
             bootstyle="secondary"
         ).pack(side=tk.RIGHT, padx=5)
 
+    def on_combobox_keyrelease(self, event):
+        """统一的键盘释放事件处理"""
+        combo = event.widget
+        # 只处理字母数字和空格键
+        if len(event.keysym) > 1 and event.keysym not in ('BackSpace', 'Delete'):
+            return
+
+        # 获取当前值
+        input_text = combo.get().strip().lower()
+
+        # 根据当前下拉框类型确定要过滤的列表
+        if combo == self.subject_cls_combo or combo == self.object_cls_combo:
+            full_list = self.entity_classes
+        elif combo == self.subject_id_combo:
+            if not hasattr(self, 'current_subject_ids'):
+                return
+            full_list = self.current_subject_ids
+        elif combo == self.object_id_combo:
+            if not hasattr(self, 'current_object_ids'):
+                return
+            full_list = self.current_object_ids
+        elif combo == self.pred_combo:
+            full_list = self.predicates
+        else:
+            return
+
+        # 过滤并设置下拉值
+        filtered = self.get_filtered_items(input_text, full_list)
+        combo['values'] = filtered
+
+        # 重新插入光标位置
+        combo.icursor(tk.END)
+
+        # 按回车时选择第一项并关闭下拉
+        if event.keysym == 'Return' and filtered:
+            combo.set(filtered[0])
+            combo.event_generate('<<ComboboxSelected>>')
+            return 'break'
+
+    def on_combobox_selected(self, event):
+        """统一的选择事件处理"""
+        combo = event.widget
+
+        # 处理主体类别选择
+        if combo == self.subject_cls_combo:
+            chosen_cls = self.subject_cls_var.get().strip().lower()
+            if chosen_cls and chosen_cls in self.category_to_trackids:
+                track_ids = self.category_to_trackids[chosen_cls]
+                # 存储+1后的ID（CVAT显示值）
+                self.current_subject_ids = [str(int(i) + 1) for i in track_ids]
+                self.subject_id_combo['values'] = self.current_subject_ids
+                if self.current_subject_ids:
+                    self.subject_id_combo.set('')
+                    self.subject_id_combo.focus()
+            else:
+                self.subject_id_combo['values'] = []
+
+        # 处理客体类别选择
+        elif combo == self.object_cls_combo:
+            chosen_cls = self.object_cls_var.get().strip().lower()
+            if chosen_cls and chosen_cls in self.category_to_trackids:
+                track_ids = self.category_to_trackids[chosen_cls]
+                self.current_object_ids = [str(int(i) + 1) for i in track_ids]
+                self.object_id_combo['values'] = self.current_object_ids
+                if self.current_object_ids:
+                    self.object_id_combo.set('')
+                    self.object_id_combo.focus()
+            else:
+                self.object_id_combo['values'] = []
+
     def update_subject_inputs(self):
         """根据选择方式更新主体输入界面"""
         if self.subject_selector.get() == "by_class":
@@ -697,66 +784,17 @@ class CustomRelationDialog(tb.Toplevel):
         """安全设置下拉框值并重置"""
         current_val = combo.get()
         combo['values'] = values
-        combo.set(current_val)
 
-        # 输入长度>0且匹配项>0时自动弹出
-        if len(current_val) > 0 and len(values) > 0:
+        # 仅在值列表非空时弹出下拉列表
+        if values:
             combo.event_generate('<Down>')
 
     # ====== 键盘事件处理函数 ======
-
-    def on_subject_cls_keyrelease(self, event):
-        """主体类别键盘释放事件"""
-        input_text = self.subject_cls_var.get().strip().lower()
-        self.filtered_entity_classes = self.get_filtered_items(input_text, self.entity_classes)
-        self.set_combo_values(self.subject_cls_combo, self.filtered_entity_classes)
-
-    def on_subject_cls_change(self, event=None):
-        """主体类别变化事件"""
-        chosen_cls = self.subject_cls_var.get().strip().lower()
-        if chosen_cls and chosen_cls in self.category_to_trackids:
-            track_ids = self.category_to_trackids[chosen_cls]
-            # 显示+1后的ID（CVAT显示值）
-            display_ids = [str(int(i) + 1) for i in track_ids]
-            self.set_combo_values(self.subject_id_combo, display_ids)
-        else:
-            self.subject_id_combo['values'] = []
-
-    def on_subject_id_keyrelease(self, event):
-        """主体ID键盘释放事件"""
-        input_text = self.subject_id_var.get().strip().lower()
-        current_values = self.subject_id_combo['values']
-        filtered = self.get_filtered_items(input_text, current_values)
-        self.set_combo_values(self.subject_id_combo, filtered)
-
-    def on_object_cls_keyrelease(self, event):
-        """客体类别键盘释放事件"""
-        input_text = self.object_cls_var.get().strip().lower()
-        self.filtered_entity_classes = self.get_filtered_items(input_text, self.entity_classes)
-        self.set_combo_values(self.object_cls_combo, self.filtered_entity_classes)
-
-    def on_object_cls_change(self, event=None):
-        """客体类别变化事件"""
-        chosen_cls = self.object_cls_var.get().strip().lower()
-        if chosen_cls and chosen_cls in self.category_to_trackids:
-            track_ids = self.category_to_trackids[chosen_cls]
-            display_ids = [str(int(i) + 1) for i in track_ids]
-            self.set_combo_values(self.object_id_combo, display_ids)
-        else:
-            self.object_id_combo['values'] = []
-
-    def on_object_id_keyrelease(self, event):
-        """客体ID键盘释放事件"""
-        input_text = self.object_id_var.get().strip().lower()
-        current_values = self.object_id_combo['values']
-        filtered = self.get_filtered_items(input_text, current_values)
-        self.set_combo_values(self.object_id_combo, filtered)
-
-    def on_pred_keyrelease(self, event):
-        """谓词键盘释放事件"""
-        input_text = self.pred_var.get().strip().lower()
-        self.filtered_predicates = self.get_filtered_items(input_text, self.predicates)
-        self.set_combo_values(self.pred_combo, self.filtered_predicates)
+    def on_subject_id_change(self, event=None):
+        """主体ID选择变化事件"""
+        # 当用户选择ID后，清空直接输入框
+        if self.subject_id_var.get():
+            self.subject_direct_id_var.set('')
 
     # ====== 按钮事件处理函数 ======
 
@@ -796,8 +834,16 @@ class CustomRelationDialog(tb.Toplevel):
             tb.dialogs.Messagebox.show_error("请选择或输入谓词", "错误", parent=self)
             return
 
-        # 添加到临时列表和树视图
-        self.tree.insert("", tk.END, values=(subj_id, obj_id, pred))
+        # 获取主体类别（显示用）
+        try:
+            # 将显示ID转换为原始ID
+            raw_subj_id = str(int(subj_id) - 1)
+            subject_class = self.id_to_category.get(raw_subj_id, "未知")
+        except:
+            subject_class = "未知"
+
+        # 添加到临时列表和树视图（添加主体类别列）
+        self.tree.insert("", tk.END, values=(subj_id, subject_class, obj_id, pred))
         self.temp_relations.append((subj_id, obj_id, pred))
 
         # 清空输入控件
@@ -824,8 +870,9 @@ class CustomRelationDialog(tb.Toplevel):
             return
         for it in sel:
             vals = self.tree.item(it, "values")
-            if tuple(vals) in self.temp_relations:
-                self.temp_relations.remove(tuple(vals))
+            # 从临时关系中移除
+            self.temp_relations = [rel for rel in self.temp_relations
+                                   if rel != (vals[0], vals[2], vals[3])]
             self.tree.delete(it)
 
     def on_confirm(self):
