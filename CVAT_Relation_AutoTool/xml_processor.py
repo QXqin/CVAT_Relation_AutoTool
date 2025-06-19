@@ -49,9 +49,15 @@ def process_xml_file(xml_path, output_path, rules, config, custom_relations=None
         processed_count, added_count = add_auto_relations(
             root, rules, config, max_id, position_manager, progress_callback
         )
-        added_count += add_custom_relations(
-            root, custom_relations, max_id, position_manager
-        )
+
+        # 添加自定义关系点
+        if custom_relations is not None:
+            added_count += add_custom_relations(
+                root, custom_relations, max_id, position_manager
+            )
+
+            # 添加此行：处理完成后清空自定义关系列表
+            custom_relations.clear()
 
         # 保存处理后的XML
         xml_str = ET.tostring(root, encoding='utf-8')
