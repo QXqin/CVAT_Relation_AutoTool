@@ -197,6 +197,74 @@ class XMLRelationApp:
         # 配置列权重
         file_frame.columnconfigure(1, weight=1)
 
+        # === 新增：预添加关系点显示区域 ===
+        relations_frame = tb.Labelframe(
+            parent,
+            text="预添加关系点",
+            bootstyle="info"
+        )
+        relations_frame.pack(fill=tk.X, pady=(0, 15))
+
+        # 创建树形视图显示关系点
+        cols = ("subject_id", "subject_class", "object_id", "predicate")
+        self.relations_tree = tb.Treeview(
+            relations_frame,
+            columns=cols,
+            show="headings",
+            height=6,  # 合适的高度
+            bootstyle="light"
+        )
+        self.relations_tree.heading("subject_id", text="主体 ID")
+        self.relations_tree.heading("subject_class", text="主体类别")
+        self.relations_tree.heading("object_id", text="客体 ID")
+        self.relations_tree.heading("predicate", text="谓词")
+        self.relations_tree.column("subject_id", width=80, anchor=tk.CENTER)
+        self.relations_tree.column("subject_class", width=120, anchor=tk.W)
+        self.relations_tree.column("object_id", width=80, anchor=tk.CENTER)
+        self.relations_tree.column("predicate", width=180, anchor=tk.W)
+
+        vsb = tb.Scrollbar(
+            relations_frame,
+            orient=tk.VERTICAL,
+            command=self.relations_tree.yview,
+            bootstyle="round"
+        )
+        hsb = tb.Scrollbar(
+            relations_frame,
+            orient=tk.HORIZONTAL,
+            command=self.relations_tree.xview,
+            bootstyle="round"
+        )
+        self.relations_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+
+        # 使用grid布局确保滚动条正确放置
+        self.relations_tree.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        vsb.grid(row=0, column=1, sticky="ns", pady=5)
+        hsb.grid(row=1, column=0, sticky="ew", padx=5)
+
+        relations_frame.columnconfigure(0, weight=1)
+        relations_frame.rowconfigure(0, weight=1)
+
+        # 操作按钮
+        btn_frame = tb.Frame(relations_frame)
+        btn_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=5, pady=(0, 5))
+
+        tb.Button(
+            btn_frame,
+            text="管理自定义关系",
+            command=self.open_custom_relation_dialog,
+            bootstyle="primary-outline",
+            width=15
+        ).pack(side=tk.LEFT, padx=5)
+
+        tb.Button(
+            btn_frame,
+            text="清空列表",
+            command=self.clear_custom_relations,
+            bootstyle="danger-outline",
+            width=10
+        ).pack(side=tk.RIGHT, padx=5)
+
         # 操作按钮
         button_frame = tb.Frame(parent)
         button_frame.pack(fill=tk.X, pady=15)
@@ -238,6 +306,36 @@ class XMLRelationApp:
             anchor="center"
         )
         self.status_label.pack(fill=tk.X, padx=5, pady=(5, 0))
+
+    def update_custom_relations_display(self):
+        """更新预添加关系点的显示"""
+        # 清除现有显示
+        for item in self.relations_tree.get_children():
+            self.relations_tree.delete(item)
+
+        # 添加所有自定义关系点
+        for subj_id, rel_list in self.custom_relations.items():
+            for obj_id, pred in rel_list:
+                # 尝试获取主体类别（如果可能）
+                subj_class = "未知"
+                for track in self.root_et.findall('track'):
+                    if track.get('id') == subj_id:
+                        subj_class = track.get('label', '未知')
+                        break
+
+                # 添加显示项目
+                self.relations_tree.insert("", tk.END, values=(
+                    str(int(subj_id) + 1),  # 显示为CVAT格式（ID+1）
+                    subj_class,
+                    str(int(obj_id) + 1),  # 显示为CVAT格式（ID+1）
+                    pred
+                ))
+
+    def clear_custom_relations(self):
+        """清空自定义关系点列表"""
+        self.custom_relations.clear()
+        self.update_custom_relations_display()
+        self.status_label.config(text="已清空自定义关系点列表")
 
     def create_right_panel(self, parent):
         """创建右侧面板内容"""
@@ -578,4 +676,5 @@ class XMLRelationApp:
             self.custom_relations
         )
         self.root.wait_window(dialog)
+        self.update_custom_relations_display()  # 新增：更新显示
         self.status_label.config(text="自定义关系已添加")
