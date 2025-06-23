@@ -23,7 +23,7 @@ class XMLRelationApp:
         self.root = root
         self.root.title("CVAT 关系自动标注工具 v3.1")
         self.root.geometry("900x700")
-
+        self.root.minsize(800,600)
         # 设置ttkbootstrap主题
         self.style = tb.Style(theme="minty")
         self.style.configure("TButton", font=("微软雅黑", 10))
@@ -121,191 +121,209 @@ class XMLRelationApp:
         self.root.bind("<Control-r>", lambda e: self.open_custom_relation_dialog())
         self.root.bind("<Control-i>", lambda e: self.handle_import_labels())
 
-    def create_widgets(self):
-        """创建主界面控件"""
-        # 创建主框架
-        main_frame = tb.Frame(self.root, bootstyle="default")
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
-
-        # 创建左侧面板和右侧面板
-        left_panel = tb.Frame(main_frame, bootstyle="light")
-        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
-
-        right_panel = tb.Frame(main_frame, bootstyle="light")
-        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False, padx=(10, 0))
-
-        # 左侧面板内容
-        self.create_left_panel(left_panel)
-
-        # 右侧面板内容
-        self.create_right_panel(right_panel)
-
-    def create_left_panel(self, parent):
-        """创建左侧面板内容"""
-        # 文件设置区域
+    def create_file_settings(self, parent):
+        """创建文件设置区域"""
         file_frame = tb.Labelframe(
             parent,
             text="文件设置",
-            bootstyle="info"
+            bootstyle="info",
+            padding=(10, 5)
         )
-        file_frame.pack(fill=tk.X, pady=(0, 15), padx=5)
+        file_frame.pack(fill=tk.X, pady=5)
+
+        # 网格布局 - 更精确地控制间距
+        file_frame.columnconfigure(1, weight=1)  # 输入框列可扩展
 
         # 输入文件
-        tb.Label(
-            file_frame,
-            text="CVAT XML 文件:",
-            bootstyle="inverse-light"
-        ).grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        tb.Label(file_frame, text="CVAT XML 文件:").grid(
+            row=0, column=0, padx=5, pady=7, sticky="e")
 
-        self.input_entry = tb.Entry(
-            file_frame,
-            width=40,
-            bootstyle="primary"
-        )
-        self.input_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        self.input_entry = tb.Entry(file_frame, width=40, bootstyle="primary")
+        self.input_entry.grid(
+            row=0, column=1, padx=(0, 5), pady=5, sticky="ew")
 
         tb.Button(
-            file_frame,
-            text="浏览...",
+            file_frame, text="浏览...",
             command=self.browse_input,
             bootstyle="primary-outline",
             width=8
-        ).grid(row=0, column=2, padx=(5, 10), pady=5)
+        ).grid(row=0, column=2, padx=5, pady=5)
 
         # 输出文件
-        tb.Label(
-            file_frame,
-            text="输出 XML 文件:",
-            bootstyle="inverse-light"
-        ).grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        tb.Label(file_frame, text="输出 XML 文件:").grid(
+            row=1, column=0, padx=5, pady=5, sticky="e")
 
-        self.output_entry = tb.Entry(
-            file_frame,
-            width=40,
-            bootstyle="primary"
-        )
-        self.output_entry.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
+        self.output_entry = tb.Entry(file_frame, width=40, bootstyle="primary")
+        self.output_entry.grid(
+            row=1, column=1, padx=(0, 5), pady=5, sticky="ew")
 
         tb.Button(
-            file_frame,
-            text="浏览...",
+            file_frame, text="浏览...",
             command=self.browse_output,
             bootstyle="primary-outline",
             width=8
-        ).grid(row=1, column=2, padx=(5, 10), pady=5)
+        ).grid(row=1, column=2, padx=5, pady=5)
 
-        # 配置列权重
-        file_frame.columnconfigure(1, weight=1)
+    def create_widgets(self):
+        """创建主界面控件 - 优化布局"""
+        # 创建主容器
+        main_container = tb.Frame(self.root, bootstyle="default")
+        main_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # === 新增：预添加关系点显示区域 ===
-        relations_frame = tb.Labelframe(
+        # 顶部文件设置区域
+        top_frame = tb.Frame(main_container, bootstyle="light")
+        top_frame.pack(fill=tk.X, padx=5, pady=(0, 15))
+
+        # 文件设置区域
+        self.create_file_settings(top_frame)
+
+        # 主内容区域 - 使用PanedWindow支持手动调整大小
+        self.main_paned = tb.PanedWindow(
+            main_container,
+            orient=tk.HORIZONTAL,
+            bootstyle="light"
+        )
+        self.main_paned.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        # 左侧面板
+        left_panel = tb.Frame(self.main_paned, bootstyle="light", width=550)
+        self.create_left_panel(left_panel)
+        self.main_paned.add(left_panel)
+
+        # 分隔符
+        self.main_paned.add(tb.Separator(self.main_paned, orient=tk.VERTICAL))
+
+        # 右侧面板
+        right_panel = tb.Frame(self.main_paned, bootstyle="light", width=350)
+        self.create_right_panel(right_panel)
+        self.main_paned.add(right_panel)
+
+        # 底部操作区域
+        bottom_frame = tb.Frame(main_container)
+        bottom_frame.pack(fill=tk.X, padx=5, pady=(15, 5))
+        self.create_bottom_controls(bottom_frame)
+
+    def create_bottom_controls(self, parent):
+        """创建底部操作控件"""
+        # 进度条容器
+        progress_container = tb.Frame(parent, bootstyle="light")
+        progress_container.pack(fill=tk.X, pady=(0, 15))
+
+        tb.Label(
+            progress_container,
+            text="处理进度:",
+            bootstyle="inverse-light"
+        ).pack(side=tk.LEFT, padx=(0, 10), pady=5)
+
+        self.progress_bar = tb.Progressbar(
+            progress_container,
+            orient=tk.HORIZONTAL,
+            length=100,
+            mode='determinate',
+            bootstyle="success-striped"
+        )
+        self.progress_bar.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 15), pady=5)
+
+        # 主要操作按钮
+        self.process_button = tb.Button(
+            parent,
+            text="执行自动标注",
+            command=self.start_processing,
+            bootstyle="success",
+            padding=(15, 5),
+            width=15
+        )
+        self.process_button.pack(side=tk.LEFT, padx=(10, 0))
+
+        # 状态标签
+        self.status_label = tb.Label(
+            parent,
+            text="准备就绪，请选择 CVAT XML 文件",
+            bootstyle="dark",
+            padding=(10, 5),
+            anchor="center"
+        )
+        self.status_label.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(10, 10))
+
+    def create_left_panel(self, parent):
+        """创建左侧面板内容 - 优化布局"""
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(1, weight=1)  # 关系点区域可扩展
+
+        # 关系点标签
+        tb.Label(
             parent,
             text="预添加关系点",
+            font=("微软雅黑", 10, "bold"),
             bootstyle="info"
-        )
-        relations_frame.pack(fill=tk.X, pady=(0, 15))
+        ).grid(row=0, column=0, sticky="w", padx=5, pady=(5, 2))
+
+        # 关系点树形视图容器
+        tree_container = tb.Frame(parent, bootstyle="default")
+        tree_container.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        tree_container.columnconfigure(0, weight=1)
+        tree_container.rowconfigure(0, weight=1)
 
         # 创建树形视图显示关系点
         cols = ("subject_id", "subject_class", "object_id", "predicate")
         self.relations_tree = tb.Treeview(
-            relations_frame,
+            tree_container,
             columns=cols,
             show="headings",
-            height=6,  # 合适的高度
-            bootstyle="light"
+            height=10,  # 适当增加高度
+            bootstyle="light",
+            selectmode="extended"
         )
         self.relations_tree.heading("subject_id", text="主体 ID")
         self.relations_tree.heading("subject_class", text="主体类别")
         self.relations_tree.heading("object_id", text="客体 ID")
         self.relations_tree.heading("predicate", text="谓词")
-        self.relations_tree.column("subject_id", width=80, anchor=tk.CENTER)
-        self.relations_tree.column("subject_class", width=120, anchor=tk.W)
-        self.relations_tree.column("object_id", width=80, anchor=tk.CENTER)
-        self.relations_tree.column("predicate", width=180, anchor=tk.W)
 
+        # 设置列宽比例
+        self.relations_tree.column("subject_id", width=80, anchor=tk.CENTER, stretch=False)
+        self.relations_tree.column("subject_class", width=120, anchor=tk.W)
+        self.relations_tree.column("object_id", width=80, anchor=tk.CENTER, stretch=False)
+        self.relations_tree.column("predicate", width=150, anchor=tk.W)
+
+        # 滚动条
         vsb = tb.Scrollbar(
-            relations_frame,
+            tree_container,
             orient=tk.VERTICAL,
             command=self.relations_tree.yview,
             bootstyle="round"
         )
         hsb = tb.Scrollbar(
-            relations_frame,
+            tree_container,
             orient=tk.HORIZONTAL,
             command=self.relations_tree.xview,
             bootstyle="round"
         )
         self.relations_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
 
-        # 使用grid布局确保滚动条正确放置
-        self.relations_tree.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-        vsb.grid(row=0, column=1, sticky="ns", pady=5)
-        hsb.grid(row=1, column=0, sticky="ew", padx=5)
+        # 使用grid布局放置组件
+        self.relations_tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
 
-        relations_frame.columnconfigure(0, weight=1)
-        relations_frame.rowconfigure(0, weight=1)
-
-        # 操作按钮
-        btn_frame = tb.Frame(relations_frame)
-        btn_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=5, pady=(0, 5))
+        # 操作按钮容器
+        btn_container = tb.Frame(parent)
+        btn_container.grid(row=2, column=0, sticky="ew", padx=5, pady=(0, 5))
+        btn_container.columnconfigure(0, weight=1)
+        btn_container.columnconfigure(1, weight=1)
 
         tb.Button(
-            btn_frame,
+            btn_container,
             text="管理自定义关系",
             command=self.open_custom_relation_dialog,
             bootstyle="primary-outline",
-            width=15
-        ).pack(side=tk.LEFT, padx=5)
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
 
         tb.Button(
-            btn_frame,
+            btn_container,
             text="清空列表",
             command=self.clear_custom_relations,
             bootstyle="danger-outline",
-            width=10
-        ).pack(side=tk.RIGHT, padx=5)
-
-        # 操作按钮
-        button_frame = tb.Frame(parent)
-        button_frame.pack(fill=tk.X, pady=15)
-
-        self.process_button = tb.Button(
-            button_frame,
-            text="执行自动标注",
-            command=self.start_processing,
-            bootstyle="success",
-            width=15,
-            padding=10
-        )
-        self.process_button.pack(pady=10, ipady=5)
-
-        # 进度显示
-        progress_frame = tb.Frame(parent)
-        progress_frame.pack(fill=tk.X, pady=(10, 0))
-
-        tb.Label(
-            progress_frame,
-            text="处理进度:",
-            bootstyle="inverse-light"
-        ).pack(side=tk.LEFT, padx=(0, 10))
-
-        self.progress_bar = tb.Progressbar(
-            progress_frame,
-            orient=tk.HORIZONTAL,
-            length=100,
-            mode='determinate',
-            bootstyle="success-striped"
-        )
-        self.progress_bar.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        self.status_label = tb.Label(
-            parent,
-            text="准备就绪，请选择 CVAT XML 文件",
-            bootstyle="dark",
-            padding=5,
-            anchor="center"
-        )
-        self.status_label.pack(fill=tk.X, padx=5, pady=(5, 0))
+        ).grid(row=0, column=1, sticky="ew")
 
     def update_custom_relations_display(self):
         """更新预添加关系点的显示"""
@@ -338,80 +356,70 @@ class XMLRelationApp:
         self.status_label.config(text="已清空自定义关系点列表")
 
     def create_right_panel(self, parent):
-        """创建右侧面板内容"""
-        # 规则预览区域
-        rule_frame = tb.Labelframe(
+        """创建右侧面板内容 - 优化布局"""
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(1, weight=1)  # 规则树形区域可扩展
+
+        # 规则预览标签
+        tb.Label(
             parent,
             text="当前规则预览",
+            font=("微软雅黑", 10, "bold"),
             bootstyle="info"
-        )
-        rule_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        ).grid(row=0, column=0, sticky="w", padx=5, pady=(5, 2))
+
+        # 规则树形视图容器
+        rule_container = tb.Frame(parent, bootstyle="default")
+        rule_container.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        rule_container.columnconfigure(0, weight=1)
+        rule_container.rowconfigure(0, weight=1)
 
         # 规则树形视图
         columns = ("object_type", "predicate")
         self.rule_tree = tb.Treeview(
-            rule_frame,
+            rule_container,
             columns=columns,
             show="headings",
-            height=15,
+            height=12,  # 适当增加高度
             bootstyle="light"
         )
         self.rule_tree.heading("object_type", text="对象类型", anchor=tk.W)
         self.rule_tree.heading("predicate", text="谓词", anchor=tk.W)
-        self.rule_tree.column("object_type", width=150, anchor=tk.W)
+        self.rule_tree.column("object_type", width=150, anchor=tk.W, stretch=False)
         self.rule_tree.column("predicate", width=150, anchor=tk.W)
 
-        scrollbar = tb.Scrollbar(
-            rule_frame,
+        # 滚动条
+        rule_scroll = tb.Scrollbar(
+            rule_container,
             orient=tk.VERTICAL,
             command=self.rule_tree.yview,
             bootstyle="round"
         )
-        self.rule_tree.configure(yscrollcommand=scrollbar.set)
+        self.rule_tree.configure(yscrollcommand=rule_scroll.set)
 
-        self.rule_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=5)
+        # 布局
+        self.rule_tree.grid(row=0, column=0, sticky="nsew")
+        rule_scroll.grid(row=0, column=1, sticky="ns")
 
-        # 规则管理按钮
-        btn_frame = tb.Frame(rule_frame)
-        btn_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
+        # 操作按钮容器
+        btn_container = tb.Frame(parent)
+        btn_container.grid(row=2, column=0, sticky="ew", padx=5, pady=(0, 5))
 
         tb.Button(
-            btn_frame,
+            btn_container,
             text="管理规则",
             command=self.manage_rules,
             bootstyle="primary-outline",
-            width=10
-        ).pack(side=tk.RIGHT, padx=5)
+            width=12
+        ).pack(side=tk.RIGHT, padx=(5, 0))
 
         tb.Button(
-            btn_frame,
+            btn_container,
             text="编辑配置",
             command=self.open_config,
             bootstyle="secondary-outline",
-            width=10
+            width=12
         ).pack(side=tk.RIGHT, padx=5)
-
-        # 统计信息
-        stats_frame = tb.Frame(parent, bootstyle="light")
-        stats_frame.pack(fill=tk.X, pady=(10, 0))
-
-        tb.Label(
-            stats_frame,
-            text="系统状态:",
-            bootstyle="inverse-light"
-        ).pack(side=tk.LEFT, padx=(0, 10))
-
-        self.stats_label = tb.Label(
-            stats_frame,
-            text="就绪 | 0 条规则 | 0 个标签",
-            bootstyle="dark",
-            anchor="w"
-        )
-        self.stats_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        # 更新统计信息
-        self.update_stats()
 
     def update_stats(self):
         """更新统计信息"""

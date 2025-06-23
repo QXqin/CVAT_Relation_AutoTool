@@ -22,98 +22,279 @@ class ConfigDialog(tb.Toplevel):
 
         self.create_widgets()
 
+class CustomRelationDialog(tb.Toplevel):
     def create_widgets(self):
-        main_frame = tb.Frame(self, padding=20)
-        main_frame.pack(fill=tk.BOTH, expand=True)
+            main_frame = tb.Frame(self, padding=10)
+            main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # 标题
-        tb.Label(
-            main_frame,
-            text="修改配置",
-            font=("微软雅黑", 14, "bold"),
-            bootstyle="primary"
-        ).pack(pady=10)
+            # 使用垂直分栏容器确保底部按钮始终可见
+            container = tb.PanedWindow(main_frame, orient=tk.VERTICAL, bootstyle="light")
+            container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # 配置选项区域
-        config_frame = tb.Labelframe(
-            main_frame,
-            text="自动化选项",
-            bootstyle="info"
-        )
-        config_frame.pack(fill=tk.X, pady=10)
+            # 内容区域（可滚动）
+            content_frame = tb.Frame(container)
+            container.add(content_frame, stretch="always")
 
-        # 配置选项复选框
-        self.sync_var = tk.BooleanVar(value=self.config.get('auto_sync_lifecycle', True))
-        sync_cb = tb.Checkbutton(
-            config_frame,
-            text="自动同步生命周期 (关联自动生成/删除)",
-            variable=self.sync_var,
-            bootstyle="round-toggle",
-            onvalue=True,
-            offvalue=False
-        )
-        sync_cb.pack(anchor=tk.W, padx=15, pady=8, fill=tk.X)
+            # 标题
+            tb.Label(
+                content_frame,
+                text="添加自定义关系点",
+                font=("微软雅黑", 14, "bold"),
+                bootstyle="primary"
+            ).pack(pady=(0, 10))
 
-        self.skip_var = tk.BooleanVar(value=self.config.get('skip_existing', True))
-        skip_cb = tb.Checkbutton(
-            config_frame,
-            text="跳过已有关系的主体 (避免重复添加)",
-            variable=self.skip_var,
-            bootstyle="round-toggle",
-            onvalue=True,
-            offvalue=False
-        )
-        skip_cb.pack(anchor=tk.W, padx=15, pady=8, fill=tk.X)
+            # 使用PanedWindow分割主体列表和关系管理区域
+            paned = tb.PanedWindow(content_frame, bootstyle="light", orient=tk.HORIZONTAL)
+            paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        self.gen_var = tk.BooleanVar(value=self.config.get('auto_generate_output', True))
-        gen_cb = tb.Checkbutton(
-            config_frame,
-            text="自动生成输出文件路径",
-            variable=self.gen_var,
-            bootstyle="round-toggle",
-            onvalue=True,
-            offvalue=False
-        )
-        gen_cb.pack(anchor=tk.W, padx=15, pady=8, fill=tk.X)
+            # 左侧：主体列表
+            left_frame = tb.Frame(paned, padding=5)
+            paned.add(left_frame)
 
-        self.backup_var = tk.BooleanVar(value=self.config.get('backup_original', True))
-        backup_cb = tb.Checkbutton(
-            config_frame,
-            text="处理前备份原始文件",
-            variable=self.backup_var,
-            bootstyle="round-toggle",
-            onvalue=True,
-            offvalue=False
-        )
-        backup_cb.pack(anchor=tk.W, padx=15, pady=8, fill=tk.X)
+            tb.Label(
+                left_frame,
+                text="主体列表 (选择主体进行关系管理)",
+                font=("微软雅黑", 10, "bold"),
+                bootstyle="inverse-light"
+            ).pack(fill=tk.X, pady=(0, 5))
 
-        # 按钮区域
-        button_frame = tb.Frame(main_frame)
-        button_frame.pack(fill=tk.X, pady=20)
+            # 主体列表（Treeview）
+            subject_tree_frame = tb.Frame(left_frame)
+            subject_tree_frame.pack(fill=tk.BOTH, expand=True)
 
-        tb.Button(
-            button_frame,
-            text="保存配置",
-            command=self.save_config,
-            width=12,
-            bootstyle="success"
-        ).pack(side=tk.LEFT, padx=10)
+            columns = ("id", "category")
+            self.subject_tree = tb.Treeview(
+                subject_tree_frame,
+                columns=columns,
+                show="headings",
+                selectmode="browse",
+                bootstyle="light",
+                height=15
+            )
+            self.subject_tree.heading("id", text="ID", anchor=tk.CENTER)
+            self.subject_tree.heading("category", text="类别", anchor=tk.W)
+            self.subject_tree.column("id", width=70, anchor=tk.CENTER)
+            self.subject_tree.column("category", width=150, anchor=tk.W)
 
-        tb.Button(
-            button_frame,
-            text="恢复默认",
-            command=self.reset_defaults,
-            width=12,
-            bootstyle="warning"
-        ).pack(side=tk.LEFT, padx=10)
+            vsb = tb.Scrollbar(
+                subject_tree_frame,
+                orient=tk.VERTICAL,
+                command=self.subject_tree.yview,
+                bootstyle="round"
+            )
+            self.subject_tree.configure(yscrollcommand=vsb.set)
+            self.subject_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            vsb.pack(side=tk.RIGHT, fill=tk.Y)
 
-        tb.Button(
-            button_frame,
-            text="关闭",
-            command=self.destroy,
-            width=12,
-            bootstyle="danger"
-        ).pack(side=tk.RIGHT, padx=10)
+            # 填充主体列表
+            for display_id in self.all_track_ids:
+                raw_id = str(int(display_id) - 1)
+                category = self.id_to_category.get(raw_id, "未知")
+                self.subject_tree.insert("", tk.END, values=(display_id, category))
+
+            # 绑定选择事件
+            self.subject_tree.bind("<<TreeviewSelect>>", self.on_subject_selected)
+
+            # 右侧：关系管理区域
+            right_frame = tb.Frame(paned, padding=5)
+            paned.add(right_frame)
+
+            # 当前主体信息
+            self.subject_info_frame = tb.Labelframe(
+                right_frame,
+                text="当前主体",
+                bootstyle="info"
+            )
+            self.subject_info_frame.pack(fill=tk.X, pady=(0, 10))
+
+            # 添加主体搜索区域
+            subject_search_frame = tb.Frame(self.subject_info_frame)
+            subject_search_frame.pack(fill=tk.X, padx=10, pady=10)
+
+            tb.Label(
+                subject_search_frame,
+                text="主体ID:",
+                bootstyle="inverse-light"
+            ).pack(side=tk.LEFT, padx=(0, 5))
+
+            self.subject_search_var = tk.StringVar()
+            self.subject_search_combo = tb.Combobox(
+                subject_search_frame,
+                textvariable=self.subject_search_var,
+                values=self.all_track_ids,
+                bootstyle="primary"
+            )
+            self.subject_search_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+            self.subject_search_combo.bind("<KeyRelease>", self.on_subject_search_keyrelease)
+            self.subject_search_combo.bind("<<ComboboxSelected>>", self.on_subject_search_selected)
+            self.subject_search_combo.bind("<Return>", self.on_subject_search_selected)
+
+            # 查找按钮
+            tb.Button(
+                subject_search_frame,
+                text="查找",
+                command=self.on_subject_search_selected,
+                bootstyle="primary",
+                width=8
+            ).pack(side=tk.LEFT, padx=5)
+
+            # 主体信息标签
+            self.subject_info_label = tb.Label(
+                self.subject_info_frame,
+                text="未选择主体",
+                font=("微软雅黑", 10),
+                bootstyle="light"
+            )
+            self.subject_info_label.pack(padx=10, pady=(0, 10))
+
+            # 添加新关系区域
+            add_relation_frame = tb.Labelframe(
+                right_frame,
+                text="添加新关系",
+                bootstyle="success"
+            )
+            add_relation_frame.pack(fill=tk.X, pady=5)
+
+            # 客体选择
+            object_frame = tb.Frame(add_relation_frame)
+            object_frame.pack(fill=tk.X, padx=5, pady=5)
+
+            tb.Label(
+                object_frame,
+                text="客体ID:",
+                bootstyle="inverse-light"
+            ).pack(side=tk.LEFT, padx=(0, 5))
+
+            self.object_id_var = tk.StringVar()
+            self.object_id_combo = tb.Combobox(
+                object_frame,
+                textvariable=self.object_id_var,
+                values=self.all_track_ids,
+                bootstyle="primary"
+            )
+            self.object_id_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+            self.object_id_combo.bind("<KeyRelease>", self.on_combobox_keyrelease)
+            self.object_id_combo.bind("<<ComboboxSelected>>", self.on_object_selected)
+
+            # 客体类别显示
+            self.object_class_label = tb.Label(
+                object_frame,
+                text="类别: 未知",
+                bootstyle="light"
+            )
+            self.object_class_label.pack(side=tk.LEFT, padx=10)
+
+            # 谓词选择
+            pred_frame = tb.Frame(add_relation_frame)
+            pred_frame.pack(fill=tk.X, padx=5, pady=5)
+
+            tb.Label(
+                pred_frame,
+                text="谓词:",
+                bootstyle="inverse-light"
+            ).pack(side=tk.LEFT, padx=(0, 5))
+
+            self.pred_var = tk.StringVar()
+            self.pred_combo = tb.Combobox(
+                pred_frame,
+                textvariable=self.pred_var,
+                values=self.predicates,
+                bootstyle="primary"
+            )
+            self.pred_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+            self.pred_combo.bind("<KeyRelease>", self.on_combobox_keyrelease)
+            self.pred_combo.bind("<<ComboboxSelected>>", self.on_combobox_selected)
+
+            # 添加到列表按钮
+            add_btn_frame = tb.Frame(add_relation_frame)
+            add_btn_frame.pack(fill=tk.X, pady=10)
+
+            tb.Button(
+                add_btn_frame,
+                text="添加关系",
+                command=self.on_add,
+                bootstyle="success",
+                width=15
+            ).pack(pady=5)
+
+            # 当前主体的关系列表
+            relation_list_frame = tb.Labelframe(
+                right_frame,
+                text="当前主体的关系",
+                bootstyle="info"
+            )
+            relation_list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
+            # 关系列表（Treeview）
+            cols = ("object_id", "object_class", "predicate")
+            self.relation_tree = tb.Treeview(
+                relation_list_frame,
+                columns=cols,
+                show="headings",
+                bootstyle="light",
+                height=8
+            )
+            self.relation_tree.heading("object_id", text="客体 ID")
+            self.relation_tree.heading("object_class", text="客体类别")
+            self.relation_tree.heading("predicate", text="谓词")
+
+            # 设置列宽
+            self.relation_tree.column("object_id", width=70, anchor=tk.CENTER)
+            self.relation_tree.column("object_class", width=100, anchor=tk.W)
+            self.relation_tree.column("predicate", width=150, anchor=tk.W)
+
+            vsb = tb.Scrollbar(
+                relation_list_frame,
+                orient=tk.VERTICAL,
+                command=self.relation_tree.yview,
+                bootstyle="round"
+            )
+            hsb = tb.Scrollbar(
+                relation_list_frame,
+                orient=tk.HORIZONTAL,
+                command=self.relation_tree.xview,
+                bootstyle="round"
+            )
+            self.relation_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+            self.relation_tree.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+            vsb.pack(side=tk.RIGHT, fill=tk.Y)
+            hsb.pack(side=tk.BOTTOM, fill=tk.X)
+
+            # "删除选中"按钮
+            del_btn_frame = tb.Frame(relation_list_frame)
+            del_btn_frame.pack(fill=tk.X, pady=5)
+
+            tb.Button(
+                del_btn_frame,
+                text="删除选中关系",
+                command=self.on_delete,
+                bootstyle="danger",
+                width=15
+            ).pack(pady=5)
+
+            # 底部按钮容器
+            button_container = tb.Frame(container)
+            container.add(button_container, stretch="never")
+
+            # "确定"和"取消"按钮（固定在底部容器）
+            bottom_frame = tb.Frame(button_container)
+            bottom_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=10)
+
+            tb.Button(
+                bottom_frame,
+                text="确定",
+                width=12,
+                command=self.on_confirm,
+                bootstyle="success"
+            ).pack(side=tk.RIGHT, padx=5)
+
+            tb.Button(
+                bottom_frame,
+                text="取消",
+                width=12,
+                command=self.on_cancel,
+                bootstyle="secondary"
+            ).pack(side=tk.RIGHT, padx=5)
 
     def save_config(self):
         self.result_config = {
@@ -427,10 +608,66 @@ class CustomRelationDialog(tb.Toplevel):
         self.filtered_predicates = predicates[:]  # 谓词过滤缓存
         self.current_subject = None  # 当前选中的主体ID（显示ID）
 
+        # 解析XML中已有的关系点
+        self.parse_existing_relations()
         # 将已有的自定义关系转换为临时关系格式
         self.convert_existing_relations()
 
         self.create_widgets()
+
+    def parse_existing_relations(self):
+        """解析XML中已有的关系点"""
+        # 遍历所有关系轨迹
+        for track in self.root_et.findall('track'):
+            if track.get('label') == "Relation":
+                # 提取关系轨迹中的第一个点（获取关系信息）
+                for points in track.findall('points'):
+                    # 跳过消亡帧
+                    if points.get('outside') == '1':
+                        continue
+
+                    predicate_attr = None
+                    subject_id_attr = None
+                    object_id_attr = None
+
+                    # 提取属性值
+                    for attr in points.findall('attribute'):
+                        name = attr.get('name')
+                        if name == 'predicate':
+                            predicate_attr = attr.text
+                        elif name == 'subject_id':
+                            subject_id_attr = attr.text
+                        elif name == 'object_id':
+                            object_id_attr = attr.text
+
+                    # 确保所有属性都存在
+                    if subject_id_attr and predicate_attr:
+                        # 获取显示ID
+                        try:
+                            display_subj_id = str(int(subject_id_attr) + 1)
+                            if object_id_attr and object_id_attr.strip():  # 检查客体ID是否有效
+                                display_obj_id = str(int(object_id_attr) + 1)
+                            else:
+                                display_obj_id = ""  # 自动生成的关系可能没有客体ID
+                        except ValueError:
+                            continue
+
+                        # 获取主体类别
+                        subj_class = self.id_to_category.get(subject_id_attr, "未知")
+                        # 获取客体类别（如果有）
+                        obj_class = "未知"
+                        if object_id_attr and object_id_attr.strip():
+                            obj_class = self.id_to_category.get(object_id_attr, "未知")
+
+                        # 添加到临时关系列表
+                        self.temp_relations.append((
+                            display_subj_id,
+                            subj_class,
+                            display_obj_id,
+                            obj_class,
+                            predicate_attr
+                        ))
+                        break  # 只需一个点就能获取关系信息
 
     def convert_existing_relations(self):
         """将已有的自定义关系转换为临时关系格式"""

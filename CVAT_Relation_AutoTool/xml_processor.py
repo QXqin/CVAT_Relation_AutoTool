@@ -23,54 +23,6 @@ def backup_file(file_path):
     return backup_path
 
 
-def process_xml_file(xml_path, output_path, rules, config, custom_relations=None, progress_callback=None):
-    """
-    处理XML文件的核心逻辑
-    """
-    try:
-        # 备份文件
-        if config.get("backup_original", True):
-            backup_path = backup_file(xml_path)
-            if progress_callback:
-                progress_callback(5, f"完成备份: {os.path.basename(backup_path)}")
-
-        # 解析XML
-        tree = ET.parse(xml_path)
-        root = tree.getroot()
-
-        # 计算最大track ID
-        track_ids = [int(track.get('id')) for track in root.findall('track')]
-        max_id = max(track_ids) if track_ids else -1
-
-        # 创建位置管理器来跟踪每个帧上的关系点位置
-        position_manager = PositionManager(root)
-
-        # 添加自动关系点
-        processed_count, added_count = add_auto_relations(
-            root, rules, config, max_id, position_manager, progress_callback
-        )
-
-        # 添加自定义关系点
-        if custom_relations is not None:
-            added_count += add_custom_relations(
-                root, custom_relations, max_id, position_manager
-            )
-
-            # 添加此行：处理完成后清空自定义关系列表
-            custom_relations.clear()
-
-        # 保存处理后的XML
-        xml_str = ET.tostring(root, encoding='utf-8')
-        pretty_xml = minidom.parseString(xml_str).toprettyxml(indent="  ", encoding="utf-8")
-        with open(output_path, 'wb') as f:
-            f.write(pretty_xml)
-
-        return True, f"处理完成: {processed_count} 个主体，添加 {added_count} 个关系点"
-
-    except Exception as e:
-        return False, f"处理错误: {str(e)}"
-
-
 class PositionManager:
     """管理每个帧上关系点的位置"""
 
@@ -107,57 +59,6 @@ class PositionManager:
             if distance < min_distance:
                 return False
         return True
-
-
-def add_auto_relations(root, rules, config, max_id, position_manager, progress_callback=None):
-    """添加自动关系点（带智能位置计算）"""
-    all_tracks = [t for t in root.findall('track') if t.get('label') != "Relation"]
-    total_tracks = len(all_tracks)
-    processed = 0
-    added_count = 0
-
-    # 修复：正确收集已有关系点的主体ID
-    existing_relations = set()
-    for track in root.findall('track'):
-        if track.get('label') == "Relation":
-            for points in track.findall('points'):
-                for attr in points.findall('attribute'):
-                    if attr.get('name') == 'subject_id' and attr.text:
-                        existing_relations.add(attr.text)
-
-    for track in all_tracks:
-        track_id = track.get('id')
-
-        # 跳过已经有关系点的主体
-        if config.get("skip_existing", True) and track_id in existing_relations:
-            processed += 1
-            if progress_callback:
-                progress = int(processed / total_tracks * 90) + 5
-                progress_callback(progress, f"跳过已有关系: {track.get('label')} (ID:{track_id})")
-            continue
-
-        label = track.get('label').lower()
-        boxes = track.findall('box')
-
-        if not boxes:
-            processed += 1
-            continue
-
-        max_id += 1
-        relation_track = create_relation_track(
-            max_id, track_id, boxes, rules, label, position_manager
-        )
-        if relation_track is not None:
-            root.append(relation_track)
-            added_count += 1
-
-        processed += 1
-
-        if progress_callback:
-            progress = int(processed / total_tracks * 90) + 5
-            progress_callback(progress, f"添加关系: {label} (ID:{track_id})")
-
-    return processed, added_count
 
 
 def calculate_priority_positions(left, top, right, bottom, width, height):
@@ -477,6 +378,57 @@ def add_custom_relations(root, custom_relations, max_id, position_manager, total
     return added_count
 
 
+def add_auto_relations(root, rules, config, max_id, position_manager, progress_callback=None, total_frames=0):
+    """添加自动关系点（带智能位置计算）"""
+    all_tracks = [t for t in root.findall('track') if t.get('label') != "Relation"]
+    total_tracks = len(all_tracks)
+    processed = 0
+    added_count = 0
+
+    # 修复：正确收集已有关系点的主体ID
+    existing_relations = set()
+    for track in root.findall('track'):
+        if track.get('label') == "Relation":
+            for points in track.findall('points'):
+                for attr in points.findall('attribute'):
+                    if attr.get('name') == 'subject_id' and attr.text:
+                        existing_relations.add(attr.text)
+
+    for track in all_tracks:
+        track_id = track.get('id')
+
+        # 跳过已经有关系点的主体
+        if config.get("skip_existing", True) and track_id in existing_relations:
+            processed += 1
+            if progress_callback:
+                progress = int(processed / total_tracks * 90) + 5
+                progress_callback(progress, f"跳过已有关系: {track.get('label')} (ID:{track_id})")
+            continue
+
+        label = track.get('label').lower()
+        boxes = track.findall('box')
+
+        if not boxes:
+            processed += 1
+            continue
+
+        max_id += 1
+        relation_track = create_relation_track(
+            max_id, track_id, boxes, rules, label, position_manager, total_frames
+        )
+        if relation_track is not None:
+            root.append(relation_track)
+            added_count += 1
+
+        processed += 1
+
+        if progress_callback:
+            progress = int(processed / total_tracks * 90) + 5
+            progress_callback(progress, f"添加关系: {label} (ID:{track_id})")
+
+    return processed, added_count
+
+
 def process_xml_file(xml_path, output_path, rules, config, custom_relations=None, progress_callback=None):
     """
     处理XML文件的核心逻辑
@@ -543,57 +495,3 @@ def process_xml_file(xml_path, output_path, rules, config, custom_relations=None
 
     except Exception as e:
         return False, f"处理错误: {str(e)}"
-
-
-def add_auto_relations(root, rules, config, max_id, position_manager, progress_callback=None, total_frames=0):
-    """添加自动关系点（带智能位置计算）"""
-    all_tracks = [t for t in root.findall('track') if t.get('label') != "Relation"]
-    total_tracks = len(all_tracks)
-    processed = 0
-    added_count = 0
-
-    # 修复：正确收集已有关系点的主体ID
-    existing_relations = set()
-    for track in root.findall('track'):
-        if track.get('label') == "Relation":
-            for points in track.findall('points'):
-                for attr in points.findall('attribute'):
-                    if attr.get('name') == 'subject_id' and attr.text:
-                        existing_relations.add(attr.text)
-
-    for track in all_tracks:
-        track_id = track.get('id')
-
-        # 跳过已经有关系点的主体
-        if config.get("skip_existing", True) and track_id in existing_relations:
-            processed += 1
-            if progress_callback:
-                progress = int(processed / total_tracks * 90) + 5
-                progress_callback(progress, f"跳过已有关系: {track.get('label')} (ID:{track_id})")
-            continue
-
-        label = track.get('label').lower()
-        boxes = track.findall('box')
-
-        if not boxes:
-            processed += 1
-            continue
-
-        max_id += 1
-        relation_track = create_relation_track(
-            max_id, track_id, boxes, rules, label, position_manager, total_frames
-        )
-        if relation_track is not None:
-            root.append(relation_track)
-            added_count += 1
-
-        processed += 1
-
-        if progress_callback:
-            progress = int(processed / total_tracks * 90) + 5
-            progress_callback(progress, f"添加关系: {label} (ID:{track_id})")
-
-    return processed, added_count
-
-
-
