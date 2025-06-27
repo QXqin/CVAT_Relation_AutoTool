@@ -1013,7 +1013,8 @@ class CustomRelationDialog(tb.Toplevel):
                 # 添加到删除列表（使用原始ID）
                 try:
                     raw_subj_id = str(int(self.current_subject) - 1)
-                    raw_obj_id = str(int(obj_id) - 1) if obj_id else ""
+                    # 处理空对象ID的情况
+                    raw_obj_id = str(int(obj_id) - 1) if obj_id and obj_id != "" else ""
                     self.temp_relations_to_delete.append((raw_subj_id, raw_obj_id, predicate))
                 except ValueError:
                     continue

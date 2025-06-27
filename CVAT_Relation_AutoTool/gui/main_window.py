@@ -660,6 +660,7 @@ class XMLRelationApp:
     def process_xml(self, input_file, output_file):
         # 处理XML文件
         try:
+
             # 获取配置和规则
             config = self.config  # 使用已有的配置
             rules = self.rules  # 使用已有的规则

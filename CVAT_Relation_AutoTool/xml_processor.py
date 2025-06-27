@@ -429,11 +429,27 @@ def add_auto_relations(root, rules, config, max_id, position_manager, progress_c
     return processed, added_count
 
 
-def process_xml_file(xml_path, output_path, rules, config, custom_relations=None, relations_to_delete=None, progress_callback=None):
+def process_xml_file(xml_path, output_path, rules, config, custom_relations=None, relations_to_delete=None,
+                     progress_callback=None):
     """
-    处理XML文件的核心逻辑
+    处理XML文件的核心逻辑。
+
+    参数:
+        xml_path (str): 输入XML文件路径
+        output_path (str): 输出XML文件路径
+        rules (dict): 自动关系规则
+        config (dict): 配置参数
+        custom_relations (dict, optional): 自定义关系，默认为None
+        relations_to_delete (list, optional): 要删除的关系列表，默认为None
+        progress_callback (callable, optional): 进度更新回调函数，默认为None
+
+    返回:
+        tuple: (success, message) - 处理是否成功及相关消息
     """
-    relations_to_delete = []  # 存储要删除的关系点
+    # 如果未传入 relations_to_delete，则初始化为空列表
+    if relations_to_delete is None:
+        relations_to_delete = []
+
     try:
         # 备份文件
         if config.get("backup_original", True):
@@ -441,13 +457,13 @@ def process_xml_file(xml_path, output_path, rules, config, custom_relations=None
             if progress_callback:
                 progress_callback(5, f"完成备份: {os.path.basename(backup_path)}")
 
-        # 解析XML
+        # 解析XML文件
         tree = ET.parse(xml_path)
         root = tree.getroot()
 
-        # 第一步：删除标记为删除的关系点
+        # 删除指定的关系点
         if relations_to_delete:
-            delete_count = delete_relations(root, relations_to_delete)  # 使用修复后的函数
+            delete_count = delete_relations(root, relations_to_delete)
             if progress_callback:
                 progress_callback(10, f"已删除 {delete_count} 个关系点")
         else:
@@ -463,7 +479,7 @@ def process_xml_file(xml_path, output_path, rules, config, custom_relations=None
                 if size is not None:
                     total_frames = int(size.text)
 
-        # 如果无法获取总帧数，尝试计算最大帧号
+        # 如果无法获取总帧数，计算最大帧号
         if total_frames == 0:
             max_frame = 0
             for track in root.findall('track'):
@@ -473,11 +489,11 @@ def process_xml_file(xml_path, output_path, rules, config, custom_relations=None
                         max_frame = frame
             total_frames = max_frame + 1  # 帧号从0开始
 
-        # 计算最大track ID
+        # 计算最大 track ID
         track_ids = [int(track.get('id')) for track in root.findall('track')]
         max_id = max(track_ids) if track_ids else -1
 
-        # 创建位置管理器来跟踪每个帧上的关系点位置
+        # 创建位置管理器以跟踪每个帧上的关系点位置
         position_manager = PositionManager(root)
 
         # 添加自动关系点
@@ -493,7 +509,7 @@ def process_xml_file(xml_path, output_path, rules, config, custom_relations=None
             # 处理完成后清空自定义关系列表
             custom_relations.clear()
 
-        # 保存处理后的XML
+        # 保存处理后的XML文件
         xml_str = ET.tostring(root, encoding='utf-8')
         pretty_xml = minidom.parseString(xml_str).toprettyxml(indent="  ", encoding="utf-8")
         with open(output_path, 'wb') as f:
@@ -505,27 +521,28 @@ def process_xml_file(xml_path, output_path, rules, config, custom_relations=None
         return False, f"处理错误: {str(e)}"
 
 
-# xml_processor.py
-
 def delete_relations(root, relations_to_delete):
-    """删除整个关系轨迹（track） - 修复版"""
     delete_count = 0
     tracks_to_remove = []
 
-    # 遍历所有关系轨迹
+    # 构建删除集合
+    delete_set = set()
+    for del_rel in relations_to_delete:
+        del_subj, del_obj, del_pred = del_rel
+        obj_id = del_obj if del_obj != "" else None
+        delete_set.add((del_subj, obj_id, del_pred))
+
+    # 遍历关系轨迹
     for track in root.findall('track'):
         if track.get('label') == "Relation":
-            # 检查轨迹中的所有点
             for points in track.findall('points'):
-                # 跳过消亡帧
                 if points.get('outside') == '1':
                     continue
 
-                # 提取属性值
+                # 提取属性
                 subj_id = None
                 obj_id = None
                 predicate = None
-
                 for attr in points.findall('attribute'):
                     name = attr.get('name')
                     if name == 'subject_id':
@@ -535,31 +552,28 @@ def delete_relations(root, relations_to_delete):
                     elif name == 'predicate':
                         predicate = attr.text
 
-                # 检查是否匹配删除条件
+                # 检查匹配
                 if subj_id and predicate:
-                    for del_rel in relations_to_delete:
-                        del_subj, del_obj, del_pred = del_rel
+                    xml_obj_id = obj_id if obj_id is not None and obj_id != "" else None
+                    match_found = False
+                    for del_item in delete_set:
+                        del_subj, del_obj, del_pred = del_item
+                        if del_subj == subj_id and del_pred == predicate:
+                            if del_obj is None:
+                                if xml_obj_id is None:
+                                    match_found = True
+                                    break
+                            else:
+                                if xml_obj_id == del_obj:
+                                    match_found = True
+                                    break
 
-                        # 检查主体ID和谓词是否匹配
-                        subject_match = (del_subj == subj_id)
-                        predicate_match = (del_pred == predicate)
+                    if match_found:
+                        tracks_to_remove.append(track)
+                        delete_count += 1
+                        break
 
-                        # 检查客体ID是否匹配（如果有）
-                        object_match = True
-                        if del_obj:  # 删除项有客体ID
-                            # XML中可能有也可能没有客体ID
-                            object_match = (del_obj == (obj_id if obj_id else ""))
-
-                        if subject_match and predicate_match and object_match:
-                            # 标记整个轨迹为待删除
-                            tracks_to_remove.append(track)
-                            delete_count += 1
-                            break  # 找到匹配后跳出内层循环
-                    else:
-                        continue  # 未匹配则继续检查下一个点
-                    break  # 已匹配并添加轨迹后跳出点循环
-
-    # 删除匹配的轨迹
+    # 删除轨迹
     for track in tracks_to_remove:
         root.remove(track)
 
