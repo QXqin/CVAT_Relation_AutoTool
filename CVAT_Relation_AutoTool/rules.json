@@ -12,5 +12,7 @@
   "debris": "on",
   "traffic cone": "on",
   "billboards": "mounted on",
-  "signpost": "on"
+  "signpost": "on",
+  "electric box": "on",
+  "tradional door": "on"
 }

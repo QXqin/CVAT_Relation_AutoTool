@@ -318,7 +318,9 @@ class CustomRelationDialog(tb.Toplevel):
                 except ValueError:
                     # 如果track_id不是有效的整数，跳过
                     continue
-
+        self.copied_relations = []  # 存储复制的客体和谓词
+        self.history = []  # 存储操作历史用于撤销
+        self.current_state = []  # 存储当前状态
         # 按数字顺序排序track_ids
         self.all_track_ids.sort(key=lambda x: int(x))
         self.filtered_predicates = predicates[:]  # 谓词过滤缓存
@@ -509,7 +511,7 @@ class CustomRelationDialog(tb.Toplevel):
             subject_tree_frame,
             columns=columns,
             show="headings",
-            selectmode="browse",
+            selectmode="extended",
             bootstyle="light",
             height=15
         )
@@ -737,6 +739,16 @@ class CustomRelationDialog(tb.Toplevel):
             command=self.on_cancel,
             bootstyle="secondary"
         ).pack(side=tk.RIGHT, padx=5)
+
+        # 绑定右键菜单和键盘事件
+        self.subject_tree.bind("<Button-3>", self.show_context_menu)
+        self.bind("<Control-z>", self.undo)
+        self.bind("<Control-Z>", self.undo)
+
+        # 创建右键菜单
+        self.context_menu = tk.Menu(self, tearoff=0)
+        self.context_menu.add_command(label="复制关系", command=self.copy_relations)
+        self.context_menu.add_command(label="粘贴关系", command=self.paste_relations)
 
     def on_combobox_keyrelease(self, event):
         """统一的键盘释放事件处理"""
@@ -1133,3 +1145,110 @@ class CustomRelationDialog(tb.Toplevel):
                 self.temp_custom_relations[raw_subj_id].append((raw_obj_id, predicate))
             except ValueError:
                 continue  # 跳过无效ID
+
+    def show_context_menu(self, event):
+        """显示右键菜单"""
+        item = self.subject_tree.identify_row(event.y)
+        if item:
+            self.subject_tree.selection_set(item)
+            self.context_menu.post(event.x_root, event.y_root)
+
+    def copy_relations(self):
+        """复制选中主体的所有关系"""
+        selected_items = self.subject_tree.selection()
+        if not selected_items:
+            return
+
+        # 保存当前状态用于撤销
+        self.save_state()
+
+        # 清空之前的复制
+        self.copied_relations = []
+
+        # 收集所有选中主体的关系
+        for item in selected_items:
+            values = self.subject_tree.item(item, "values")
+            if not values:
+                continue
+            subj_display_id = values[0]  # 主体显示ID
+
+            # 从临时关系中找出该主体的所有关系
+            for rel in self.temp_relations:
+                if rel[0] == subj_display_id:
+                    # 存储关系：客体ID、客体类别、谓词
+                    self.copied_relations.append((rel[2], rel[3], rel[4]))
+
+        tb.dialogs.Messagebox.show_info(f"已复制 {len(self.copied_relations)} 条关系", "复制成功", parent=self)
+
+    def paste_relations(self):
+        """将复制的所有关系粘贴到当前选中的主体"""
+        if not self.copied_relations:
+            return
+
+        # 保存当前状态用于撤销
+        self.save_state()
+
+        selected_items = self.subject_tree.selection()
+        if not selected_items:
+            return
+
+        added_count = 0
+
+        for item in selected_items:
+            values = self.subject_tree.item(item, "values")
+            if not values:
+                continue
+            subj_display_id = values[0]  # 当前主体的显示ID
+            subj_class = values[1]  # 当前主体的类别
+
+            # 将复制的每个关系添加到当前主体
+            for rel in self.copied_relations:
+                obj_display_id, obj_class, predicate = rel
+
+                # 检查该关系是否已经存在
+                exists = False
+                for existing_rel in self.temp_relations:
+                    if (existing_rel[0] == subj_display_id and
+                            existing_rel[2] == obj_display_id and
+                            existing_rel[4] == predicate):
+                        exists = True
+                        break
+
+                if not exists:
+                    # 添加新关系
+                    new_rel = (subj_display_id, subj_class, obj_display_id, obj_class, predicate)
+                    self.temp_relations.append(new_rel)
+                    self.new_relations.append(new_rel)  # 同时添加到 new_relations
+                    added_count += 1
+
+        # 更新当前主体的关系列表
+        self.update_relation_list()
+
+        tb.dialogs.Messagebox.show_info(
+            f"已粘贴 {added_count} 条关系到 {len(selected_items)} 个主体",
+            "粘贴成功",
+            parent=self
+        )
+
+    def save_state(self):
+        """保存当前状态到历史记录"""
+        # 最多保存10个历史状态
+        if len(self.history) >= 10:
+            self.history.pop(0)
+
+        # 保存当前状态
+        self.history.append(self.temp_relations.copy())
+
+    def undo(self, event=None):
+        """撤销上一步操作"""
+        if not self.history:
+            return
+
+        # 恢复上一步的状态
+        self.temp_relations = self.history.pop()
+
+        # 更新关系列表显示
+        self.update_relation_list()
+
+        # 提示用户
+        self.status_label.config(text="已撤销上一步操作")
