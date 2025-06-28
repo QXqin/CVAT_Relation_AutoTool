@@ -282,7 +282,7 @@ class XMLRelationApp:
             tree_container,
             columns=cols,
             show="headings",
-            height=5,  # 高度调整
+            height=4,  # 高度调整
             bootstyle="light",
             selectmode="extended"
         )
@@ -354,8 +354,8 @@ class XMLRelationApp:
             del_tree_container,
             columns=del_cols,
             show="headings",
-            height=5,  # 高度调整
-            bootstyle="danger",
+            height=4,  # 高度调整
+            bootstyle="light",
             selectmode="extended"
         )
         self.deletion_tree.heading("subject_id", text="主体 ID")

@@ -502,6 +502,27 @@ class CustomRelationDialog(tb.Toplevel):
             bootstyle="inverse-light"
         ).pack(fill=tk.X, pady=(0, 5))
 
+        # 添加主体搜索区域
+        subject_search_frame = tb.Frame(left_frame)
+        subject_search_frame.pack(fill=tk.X, pady=(0, 5))
+
+        tb.Label(
+            subject_search_frame,
+            text="搜索主体:",
+            bootstyle="inverse-light"
+        ).pack(side=tk.LEFT, padx=(0, 5))
+
+        self.subject_filter_var = tk.StringVar()  # 修正：使用新的变量名
+        self.subject_filter_entry = tb.Entry(
+            subject_search_frame,
+            textvariable=self.subject_filter_var,
+            width=20,
+            bootstyle="primary"
+        )
+        self.subject_filter_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        self.subject_filter_entry.bind("<KeyRelease>", self.filter_subjects)
+        self.subject_filter_entry.bind("<Return>", self.filter_subjects)  # 添加回车键绑定
+
         # 主体列表（Treeview）
         subject_tree_frame = tb.Frame(left_frame)
         subject_tree_frame.pack(fill=tk.BOTH, expand=True)
@@ -513,7 +534,7 @@ class CustomRelationDialog(tb.Toplevel):
             show="headings",
             selectmode="extended",
             bootstyle="light",
-            height=15
+            height=12
         )
         self.subject_tree.heading("id", text="ID", anchor=tk.CENTER)
         self.subject_tree.heading("category", text="类别", anchor=tk.W)
@@ -527,14 +548,24 @@ class CustomRelationDialog(tb.Toplevel):
             bootstyle="round"
         )
         self.subject_tree.configure(yscrollcommand=vsb.set)
-        self.subject_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        vsb.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # 填充主体列表
+        # 使用grid布局
+        self.subject_tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+
+        # 配置网格权重
+        subject_tree_frame.grid_rowconfigure(0, weight=1)
+        subject_tree_frame.grid_columnconfigure(0, weight=1)
+
+        # 存储所有主体数据用于筛选
+        self.all_subjects = []
         for display_id in self.all_track_ids:
             raw_id = str(int(display_id) - 1)
             category = self.id_to_category.get(raw_id, "未知")
-            self.subject_tree.insert("", tk.END, values=(display_id, category))
+            self.all_subjects.append((display_id, category))
+
+        # 初始填充主体列表
+        self.filter_subjects()
 
         # 绑定选择事件
         self.subject_tree.bind("<<TreeviewSelect>>", self.on_subject_selected)
@@ -549,11 +580,11 @@ class CustomRelationDialog(tb.Toplevel):
             text="当前主体",
             bootstyle="info"
         )
-        self.subject_info_frame.pack(fill=tk.X, pady=(0, 10))
+        self.subject_info_frame.pack(fill=tk.X, pady=(0, 5))
 
         # 添加主体搜索区域
         subject_search_frame = tb.Frame(self.subject_info_frame)
-        subject_search_frame.pack(fill=tk.X, padx=10, pady=10)
+        subject_search_frame.pack(fill=tk.X, padx=5, pady=5)
 
         tb.Label(
             subject_search_frame,
@@ -589,7 +620,7 @@ class CustomRelationDialog(tb.Toplevel):
             font=("微软雅黑", 10),
             bootstyle="light"
         )
-        self.subject_info_label.pack(padx=10, pady=(0, 10))
+        self.subject_info_label.pack(padx=5, pady=(0, 5))
 
         # 添加新关系区域
         add_relation_frame = tb.Labelframe(
@@ -651,7 +682,7 @@ class CustomRelationDialog(tb.Toplevel):
 
         # 添加到列表按钮
         add_btn_frame = tb.Frame(add_relation_frame)
-        add_btn_frame.pack(fill=tk.X, pady=10)
+        add_btn_frame.pack(fill=tk.X, pady=5)
 
         tb.Button(
             add_btn_frame,
@@ -676,7 +707,7 @@ class CustomRelationDialog(tb.Toplevel):
             columns=cols,
             show="headings",
             bootstyle="light",
-            height=8
+            height=6
         )
         self.relation_tree.heading("object_id", text="客体 ID")
         self.relation_tree.heading("object_class", text="客体类别")
@@ -700,13 +731,19 @@ class CustomRelationDialog(tb.Toplevel):
             bootstyle="round"
         )
         self.relation_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-        self.relation_tree.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        vsb.pack(side=tk.RIGHT, fill=tk.Y)
-        hsb.pack(side=tk.BOTTOM, fill=tk.X)
+
+        # 使用grid布局
+        self.relation_tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+
+        # 配置网格权重
+        relation_list_frame.grid_rowconfigure(0, weight=1)
+        relation_list_frame.grid_columnconfigure(0, weight=1)
 
         # "删除选中"按钮
         del_btn_frame = tb.Frame(relation_list_frame)
-        del_btn_frame.pack(fill=tk.X, pady=5)
+        del_btn_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(5, 0))
 
         tb.Button(
             del_btn_frame,
@@ -749,6 +786,29 @@ class CustomRelationDialog(tb.Toplevel):
         self.context_menu = tk.Menu(self, tearoff=0)
         self.context_menu.add_command(label="复制关系", command=self.copy_relations)
         self.context_menu.add_command(label="粘贴关系", command=self.paste_relations)
+
+    # +++ 新增筛选方法 +++
+    def filter_subjects(self, event=None):
+        """根据搜索条件筛选主体"""
+        # 获取搜索词并转换为小写
+        search_term = self.subject_filter_var.get().strip().lower()
+
+        # 清空当前显示
+        for item in self.subject_tree.get_children():
+            self.subject_tree.delete(item)
+
+        # 如果没有搜索词，显示所有主体
+        if not search_term:
+            for display_id, category in self.all_subjects:
+                self.subject_tree.insert("", tk.END, values=(display_id, category))
+            return
+
+        # 筛选并添加匹配项
+        for display_id, category in self.all_subjects:
+            # 匹配ID或类别（都转换为小写比较）
+            if (search_term in display_id.lower() or
+                    search_term in category.lower()):
+                self.subject_tree.insert("", tk.END, values=(display_id, category))
 
     def on_combobox_keyrelease(self, event):
         """统一的键盘释放事件处理"""
