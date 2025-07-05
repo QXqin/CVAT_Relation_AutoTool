@@ -164,10 +164,11 @@ class CustomRelationDialog(tb.Toplevel):
                         # 获取显示ID
                         try:
                             display_subj_id = str(int(subject_id_attr) + 1)
+                            # 处理空对象ID的情况
                             if object_id_attr and object_id_attr.strip():
                                 display_obj_id = str(int(object_id_attr) + 1)
                             else:
-                                display_obj_id = ""
+                                display_obj_id = ""  # 保持为空字符串
                         except ValueError:
                             continue
 
@@ -177,6 +178,8 @@ class CustomRelationDialog(tb.Toplevel):
                         obj_class = "未知"
                         if object_id_attr and object_id_attr.strip():
                             obj_class = self.id_to_category.get(object_id_attr, "未知")
+                        else:
+                            obj_class = "未知"  # 特殊标记表示客体为空
 
                         # 添加到临时关系列表
                         self.temp_relations.append((
@@ -759,18 +762,7 @@ class CustomRelationDialog(tb.Toplevel):
         for rel in subject_relations:
             _, _, obj_id, obj_class, predicate = rel
 
-            # 验证obj_id是否为有效数字
-            if not obj_id.isdigit():
-                # 如果obj_id不是数字，跳过这个关系
-                continue
-
-            try:
-                # 尝试将obj_id转换为整数
-                int(obj_id)
-            except ValueError:
-                # 如果转换失败，跳过这个关系
-                continue
-
+            # 直接添加关系，不再验证obj_id是否为有效数字
             self.relation_tree.insert("", tk.END, values=(obj_id, obj_class, predicate))
 
     # ====== 按钮事件处理函数 ======
