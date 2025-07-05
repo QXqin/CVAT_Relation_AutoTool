@@ -4,7 +4,6 @@ from ttkbootstrap.constants import *
 import json
 import pandas as pd
 from config import DEFAULT_CONFIG
-from rules import DEFAULT_RULES
 
 
 class ConfigDialog(tb.Toplevel):
@@ -21,262 +20,6 @@ class ConfigDialog(tb.Toplevel):
         #self.style = parent.style  # 使用父窗口的样式
 
         self.create_widgets()
-
-class RuleManager(tb.Toplevel):
-    """规则管理对话框 - 使用ttkbootstrap美化"""
-
-    def __init__(self, parent, rules):
-        super().__init__(parent)
-        self.parent = parent
-        self.rules = rules
-        self.title("管理关系谓词规则")
-        self.geometry("700x550")
-
-        # 使用父窗口的样式
-        #self.style = parent.style
-
-        self.create_widgets()
-        self.populate_rules()
-
-    def create_widgets(self):
-        main_frame = tb.Frame(self, padding=20)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # 标题
-        tb.Label(
-            main_frame,
-            text="管理关系谓词规则",
-            font=("微软雅黑", 14, "bold"),
-            bootstyle="primary"
-        ).pack(fill=tk.X, pady=(0, 15))
-
-        # 规则列表区域
-        list_frame = tb.Labelframe(
-            main_frame,
-            text="当前规则",
-            bootstyle="info"
-        )
-        list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
-
-        # 规则表格
-        columns = ("object_type", "predicate")
-        self.tree = tb.Treeview(
-            list_frame,
-            columns=columns,
-            show="headings",
-            selectmode="browse",
-            bootstyle="light"
-        )
-        self.tree.heading("object_type", text="对象类型", anchor=tk.W)
-        self.tree.heading("predicate", text="谓词", anchor=tk.W)
-        self.tree.column("object_type", width=250, stretch=tk.YES)
-        self.tree.column("predicate", width=250, stretch=tk.YES)
-
-        scrollbar = tb.Scrollbar(
-            list_frame,
-            orient=tk.VERTICAL,
-            command=self.tree.yview,
-            bootstyle="round"
-        )
-        self.tree.configure(yscrollcommand=scrollbar.set)
-
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=5)
-
-        # 按钮区域
-        button_frame = tb.Frame(main_frame)
-        button_frame.pack(fill=tk.X, pady=15)
-
-        tb.Button(
-            button_frame,
-            text="添加规则",
-            command=self.add_rule,
-            width=12,
-            bootstyle="success"
-        ).pack(side=tk.LEFT, padx=5)
-
-        tb.Button(
-            button_frame,
-            text="编辑规则",
-            command=self.edit_rule,
-            width=12,
-            bootstyle="primary"
-        ).pack(side=tk.LEFT, padx=5)
-
-        tb.Button(
-            button_frame,
-            text="删除规则",
-            command=self.delete_rule,
-            width=12,
-            bootstyle="danger"
-        ).pack(side=tk.LEFT, padx=5)
-
-        tb.Button(
-            button_frame,
-            text="保存并关闭",
-            command=self.save_and_close,
-            width=12,
-            bootstyle="success-outline"
-        ).pack(side=tk.RIGHT, padx=5)
-
-        tb.Button(
-            button_frame,
-            text="重置默认",
-            command=self.reset_defaults,
-            width=12,
-            bootstyle="warning-outline"
-        ).pack(side=tk.RIGHT, padx=5)
-
-    def populate_rules(self):
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        for obj_type, predicate in self.rules.items():
-            self.tree.insert("", tk.END, values=(obj_type, predicate))
-
-    def add_rule(self):
-        add_dialog = tb.Toplevel(self)
-        add_dialog.title("添加规则")
-        add_dialog.geometry("400x200")
-        add_dialog.resizable(False, False)
-
-        form_frame = tb.Frame(add_dialog, padding=20)
-        form_frame.pack(fill=tk.BOTH, expand=True)
-
-        # 对象类型输入
-        tb.Label(form_frame, text="对象类型:").grid(row=0, column=0, padx=5, pady=10, sticky=tk.W)
-        obj_type_entry = tb.Entry(form_frame, width=30, bootstyle="primary")
-        obj_type_entry.grid(row=0, column=1, padx=5, pady=10, sticky=tk.EW)
-
-        # 谓词输入
-        tb.Label(form_frame, text="谓词:").grid(row=1, column=0, padx=5, pady=10, sticky=tk.W)
-        predicate_entry = tb.Entry(form_frame, width=30, bootstyle="primary")
-        predicate_entry.grid(row=1, column=1, padx=5, pady=10, sticky=tk.EW)
-
-        # 按钮区域
-        button_frame = tb.Frame(form_frame)
-        button_frame.grid(row=2, column=0, columnspan=2, pady=20)
-
-        def save_rule():
-            obj_type = obj_type_entry.get().strip()
-            predicate = predicate_entry.get().strip()
-            if not obj_type or not predicate:
-                tb.dialogs.Messagebox.show_error("对象类型和谓词不能为空", "错误", parent=add_dialog)
-                return
-            if obj_type in self.rules:
-                tb.dialogs.Messagebox.show_error(f"对象类型 '{obj_type}' 已存在", "错误", parent=add_dialog)
-                return
-            self.rules[obj_type] = predicate
-            self.populate_rules()
-            add_dialog.destroy()
-
-        tb.Button(
-            button_frame,
-            text="保存",
-            command=save_rule,
-            bootstyle="success"
-        ).pack(side=tk.LEFT, padx=10)
-
-        tb.Button(
-            button_frame,
-            text="取消",
-            command=add_dialog.destroy,
-            bootstyle="secondary"
-        ).pack(side=tk.RIGHT, padx=10)
-
-    def edit_rule(self):
-        selected = self.tree.selection()
-        if not selected:
-            tb.dialogs.Messagebox.show_warning("请先选择要编辑的规则", "提示", parent=self)
-            return
-        item = selected[0]
-        values = self.tree.item(item, "values")
-        obj_type, predicate = values
-
-        edit_dialog = tb.Toplevel(self)
-        edit_dialog.title("编辑规则")
-        edit_dialog.geometry("400x200")
-        edit_dialog.resizable(False, False)
-
-        form_frame = tb.Frame(edit_dialog, padding=20)
-        form_frame.pack(fill=tk.BOTH, expand=True)
-
-        # 对象类型显示
-        tb.Label(form_frame, text="对象类型:").grid(row=0, column=0, padx=5, pady=10, sticky=tk.W)
-        tb.Label(
-            form_frame,
-            text=obj_type,
-            font=("微软雅黑", 10, "bold"),
-            bootstyle="primary"
-        ).grid(row=0, column=1, padx=5, pady=10, sticky=tk.W)
-
-        # 谓词编辑
-        tb.Label(form_frame, text="谓词:").grid(row=1, column=0, padx=5, pady=10, sticky=tk.W)
-        predicate_entry = tb.Entry(form_frame, width=30, bootstyle="primary")
-        predicate_entry.insert(0, predicate)
-        predicate_entry.grid(row=1, column=1, padx=5, pady=10, sticky=tk.EW)
-
-        # 按钮区域
-        button_frame = tb.Frame(form_frame)
-        button_frame.grid(row=2, column=0, columnspan=2, pady=20)
-
-        def save_edit():
-            new_predicate = predicate_entry.get().strip()
-            if not new_predicate:
-                tb.dialogs.Messagebox.show_error("谓词不能为空", "错误", parent=edit_dialog)
-                return
-            self.rules[obj_type] = new_predicate
-            self.populate_rules()
-            edit_dialog.destroy()
-
-        tb.Button(
-            button_frame,
-            text="保存",
-            command=save_edit,
-            bootstyle="success"
-        ).pack(side=tk.LEFT, padx=10)
-
-        tb.Button(
-            button_frame,
-            text="取消",
-            command=edit_dialog.destroy,
-            bootstyle="secondary"
-        ).pack(side=tk.RIGHT, padx=10)
-
-    def delete_rule(self):
-        selected = self.tree.selection()
-        if not selected:
-            tb.dialogs.Messagebox.show_warning("请先选择要删除的规则", "提示", parent=self)
-            return
-        item = selected[0]
-        values = self.tree.item(item, "values")
-        obj_type, _ = values
-
-        if not tb.dialogs.Messagebox.yesno(
-                f"确定要删除对象类型 '{obj_type}' 的规则？",
-                "确认删除",
-                parent=self
-        ):
-            return
-
-        if obj_type in self.rules:
-            del self.rules[obj_type]
-            self.populate_rules()
-
-    def reset_defaults(self):
-        if not tb.dialogs.Messagebox.yesno(
-                "确定要恢复为默认规则？",
-                "确认重置",
-                parent=self
-        ):
-            return
-        self.rules = DEFAULT_RULES.copy()
-        self.populate_rules()
-
-    def save_and_close(self):
-        with open("rules.json", "w") as f:
-            json.dump(self.rules, f, indent=2)
-        self.destroy()
-
 
 class CustomRelationDialog(tb.Toplevel):
     """自定义关系点对话框 - 改进版 - 使用ttkbootstrap美化"""
@@ -325,7 +68,8 @@ class CustomRelationDialog(tb.Toplevel):
         self.all_track_ids.sort(key=lambda x: int(x))
         self.filtered_predicates = predicates[:]  # 谓词过滤缓存
         self.current_subject = None  # 当前选中的主体ID（显示ID）
-
+        # 初始化关系计数字典
+        self.subject_relation_counts = {}
         # 解析XML中已有的关系点
         self.parse_existing_relations()
         # 初始化本次添加的关系点列表
@@ -559,10 +303,20 @@ class CustomRelationDialog(tb.Toplevel):
 
         # 存储所有主体数据用于筛选
         self.all_subjects = []
+
+        # 初始化关系计数（如果尚未初始化）
+        if not hasattr(self, 'subject_relation_counts'):
+            self.subject_relation_counts = {}
+
+        # 统计每个主体的关系数量
         for display_id in self.all_track_ids:
             raw_id = str(int(display_id) - 1)
             category = self.id_to_category.get(raw_id, "未知")
             self.all_subjects.append((display_id, category))
+
+            # 统计该主体的关系数量
+            count = sum(1 for rel in self.temp_relations if rel[0] == display_id)
+            self.subject_relation_counts[display_id] = count
 
         # 初始填充主体列表
         self.filter_subjects()
@@ -655,7 +409,7 @@ class CustomRelationDialog(tb.Toplevel):
         self.object_class_label = tb.Label(
             object_frame,
             text="类别: 未知",
-            bootstyle="light"
+            bootstyle="dark"
         )
         self.object_class_label.pack(side=tk.LEFT, padx=10)
 
@@ -797,18 +551,64 @@ class CustomRelationDialog(tb.Toplevel):
         for item in self.subject_tree.get_children():
             self.subject_tree.delete(item)
 
+        # 确保关系计数字典存在
+        if not hasattr(self, 'subject_relation_counts'):
+            self.subject_relation_counts = {}
+
+        # 计算最大关系数用于颜色渐变
+        max_relations = max(self.subject_relation_counts.values()) if self.subject_relation_counts and len(self.subject_relation_counts) > 0 else 1
+
         # 如果没有搜索词，显示所有主体
         if not search_term:
             for display_id, category in self.all_subjects:
-                self.subject_tree.insert("", tk.END, values=(display_id, category))
+                # 获取关系数量
+                count = self.subject_relation_counts.get(display_id, 0)
+
+                # 计算渐变色 (从浅蓝色到深蓝色)
+                ratio = count / max_relations
+                r = int(230 * (1 - ratio))  # 红色分量减少
+                g = int(240 * (1 - ratio))  # 绿色分量减少
+                b = 255  # 蓝色保持较高
+                color = f'#{r:02x}{g:02x}{b:02x}'
+
+                # 插入行并设置背景色
+                item = self.subject_tree.insert("", tk.END, values=(display_id, category))
+                self.subject_tree.tag_configure(color, background=color, foreground='black')
+                self.subject_tree.item(item, tags=(color,))
             return
 
-        # 筛选并添加匹配项
-        for display_id, category in self.all_subjects:
-            # 匹配ID或类别（都转换为小写比较）
-            if (search_term in display_id.lower() or
-                    search_term in category.lower()):
-                self.subject_tree.insert("", tk.END, values=(display_id, category))
+            # 筛选并添加匹配项
+            for display_id, category in self.all_subjects:
+                # 匹配ID或类别（都转换为小写比较）
+                if (search_term in display_id.lower() or
+                        search_term in category.lower()):
+                    # 获取关系数量
+                    count = self.subject_relation_counts.get(display_id, 0)
+
+                    # 计算渐变色 (从浅蓝色到深蓝色)
+                    ratio = count / max_relations
+                    r = int(230 * (1 - ratio))  # 红色分量减少
+                    g = int(240 * (1 - ratio))  # 绿色分量减少
+                    b = 255  # 蓝色保持较高
+                    color = f'#{r:02x}{g:02x}{b:02x}'
+
+                    # 插入行并设置背景色
+                    item = self.subject_tree.insert("", tk.END, values=(display_id, category))
+                    self.subject_tree.tag_configure(color, background=color, foreground='black')
+                    self.subject_tree.item(item, tags=(color,))
+
+    # +++ 添加更新主体关系计数的方法 +++
+    def update_relation_counts(self):
+        """更新每个主体的关系计数"""
+        # 重置所有计数
+        for display_id in self.subject_relation_counts:
+            self.subject_relation_counts[display_id] = 0
+
+        # 重新计数
+        for rel in self.temp_relations:
+            subject_id = rel[0]
+            if subject_id in self.subject_relation_counts:
+                self.subject_relation_counts[subject_id] += 1
 
     def on_combobox_keyrelease(self, event):
         """统一的键盘释放事件处理"""
@@ -1048,9 +848,15 @@ class CustomRelationDialog(tb.Toplevel):
             obj_class,
             pred
         ))
-
+        # 更新关系计数
+        if self.current_subject in self.subject_relation_counts:
+            self.subject_relation_counts[self.current_subject] += 1
+        else:
+            self.subject_relation_counts[self.current_subject] = 1
         # 更新关系列表
         self.update_relation_list()
+        # 更新主体列表显示（刷新颜色）
+        self.filter_subjects()
 
         # 清空输入控件
         self.object_id_var.set('')
@@ -1092,21 +898,34 @@ class CustomRelationDialog(tb.Toplevel):
                     continue
 
         # 从临时关系中移除
-        self.temp_relations = [
-            rel for rel in self.temp_relations
-            if rel[0] != self.current_subject or
-               (rel[2], rel[4]) not in to_delete
-        ]
+        for rel in to_delete:
+            obj_id, predicate = rel
+            self.temp_relations = [
+                r for r in self.temp_relations
+                if not (r[0] == self.current_subject and
+                        r[2] == obj_id and
+                        r[4] == predicate)
+            ]
+
+            # 更新关系计数
+            if self.current_subject in self.subject_relation_counts:
+                self.subject_relation_counts[self.current_subject] = max(0, self.subject_relation_counts[
+                    self.current_subject] - 1)
 
         # 同时从新添加的关系中移除（如果存在）
-        self.new_relations = [
-            rel for rel in self.new_relations
-            if rel[0] != self.current_subject or
-               (rel[2], rel[4]) not in to_delete
-        ]
+        for rel in to_delete:
+            obj_id, predicate = rel
+            self.new_relations = [
+                r for r in self.new_relations
+                if not (r[0] == self.current_subject and
+                        r[2] == obj_id and
+                        r[4] == predicate)
+            ]
 
         # 更新关系列表
         self.update_relation_list()
+        # 更新主体列表显示（刷新颜色）
+        self.filter_subjects()
 
     def on_confirm(self):
         """确认按钮事件"""
@@ -1281,14 +1100,17 @@ class CustomRelationDialog(tb.Toplevel):
                     self.new_relations.append(new_rel)  # 同时添加到 new_relations
                     added_count += 1
 
+                    # 更新关系计数
+                    if subj_display_id in self.subject_relation_counts:
+                        self.subject_relation_counts[subj_display_id] += 1
+                    else:
+                        self.subject_relation_counts[subj_display_id] = 1
+
         # 更新当前主体的关系列表
         self.update_relation_list()
+        # 更新主体列表显示（刷新颜色）
+        self.filter_subjects()
 
-        tb.dialogs.Messagebox.show_info(
-            f"已粘贴 {added_count} 条关系到 {len(selected_items)} 个主体",
-            "粘贴成功",
-            parent=self
-        )
 
     def save_state(self):
         """保存当前状态到历史记录"""

@@ -50,7 +50,8 @@
     "lantern",
     "tricycle",
     "street furniture",
-    "traffic cone"
+    "traffic cone",
+    "dripping eaves"
   ],
   "predicates": [
     "above",
@@ -83,7 +84,7 @@
     "on the side of",
     "on the top of",
     "near",
-    "walk on",
+    "is walking on",
     "ride",
     "is hanging on",
     "on",
@@ -92,6 +93,8 @@
     "embedded within",
     "perforated by",
     "bear the load of",
-    "hang below"
+    "hang below",
+    "is in the middle of",
+    "is driving on"
   ]
 }

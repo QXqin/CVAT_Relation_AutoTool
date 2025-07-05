@@ -1,13 +1,13 @@
+# main_window.py (修改后)
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
 import os
 import xml.etree.ElementTree as ET
-from config import load_config, save_config
-from rules import load_rules, save_rules
+from config import load_config
 from labels_manager import load_labels_config
 from xml_processor import process_xml_file
-from .dialogs import ConfigDialog, RuleManager, CustomRelationDialog
+from .dialogs import CustomRelationDialog
 import pandas as pd
 from datetime import datetime
 import json
@@ -36,7 +36,6 @@ class XMLRelationApp:
 
         # 初始化配置
         self.config = load_config()
-        self.rules = load_rules()
         self.entity_classes, self.predicates = load_labels_config()
         self.category_to_trackids = {}
         self.custom_relations = {}
@@ -58,14 +57,12 @@ class XMLRelationApp:
             # 使用PIL加载和调整图标大小
             self.help_icon = self.create_icon("?", size=(16, 16))
             self.config_icon = self.create_icon("⚙️", size=(16, 16))
-            self.rules_icon = self.create_icon("📝", size=(16, 16))
             self.process_icon = self.create_icon("▶️", size=(20, 20))
             self.folder_icon = self.create_icon("📂", size=(16, 16))
         except:
             # 如果图标加载失败，使用文本
             self.help_icon = "?"
             self.config_icon = "⚙️"
-            self.rules_icon = "📝"
             self.process_icon = "▶️"
             self.folder_icon = "📂"
 
@@ -81,7 +78,6 @@ class XMLRelationApp:
         # 文件菜单
         file_menu = tb.Menu(menubar, tearoff=0)
         file_menu.add_command(label="打开文件", command=self.browse_input)
-        file_menu.add_command(label="保存配置", command=self.save_config)
         file_menu.add_separator()
         file_menu.add_command(label="退出", command=self.root.quit)
         menubar.add_cascade(label="文件", menu=file_menu)
@@ -184,16 +180,16 @@ class XMLRelationApp:
         )
         self.main_paned.pack(fill=tk.BOTH, expand=True, pady=5)
 
-        # 左侧面板
-        left_panel = tb.Frame(self.main_paned, bootstyle="light", width=550)
+        # 左侧面板 - 预添加关系点
+        left_panel = tb.Frame(self.main_paned, bootstyle="light", width=400)
         self.create_left_panel(left_panel)
         self.main_paned.add(left_panel)
 
         # 分隔符
         self.main_paned.add(tb.Separator(self.main_paned, orient=tk.VERTICAL))
 
-        # 右侧面板
-        right_panel = tb.Frame(self.main_paned, bootstyle="light", width=350)
+        # 右侧面板 - 预删除关系点和谓词列表
+        right_panel = tb.Frame(self.main_paned, bootstyle="light", width=300)
         self.create_right_panel(right_panel)
         self.main_paned.add(right_panel)
 
@@ -207,6 +203,20 @@ class XMLRelationApp:
         # 进度条容器
         progress_container = tb.Frame(parent, bootstyle="light")
         progress_container.pack(fill=tk.X, pady=(0, 15))
+
+        # 添加统计信息标签
+        stats_frame = tb.Frame(progress_container)
+        stats_frame.pack(side=tk.LEFT, padx=(0, 10))
+
+        # 创建stats_label属性
+        self.stats_label = tb.Label(
+            stats_frame,
+            text="就绪 | 0 个实体类别 | 0 个谓词",
+            bootstyle="dark",
+            padding=(5, 0),
+            anchor="center"
+        )
+        self.stats_label.pack()
 
         tb.Label(
             progress_container,
@@ -245,22 +255,21 @@ class XMLRelationApp:
         self.status_label.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(10, 10))
 
     def create_left_panel(self, parent):
-        """创建左侧面板内容 - 优化布局"""
+        """创建左侧面板内容 - 预添加关系点区域"""
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)  # 让整个面板在父容器中扩展
 
-        # 使用Frame作为容器，使用grid布局
+        # 使用Frame作为容器
         container = tb.Frame(parent, bootstyle="light")
         container.grid(row=0, column=0, sticky="nsew")
         container.columnconfigure(0, weight=1)
         container.rowconfigure(0, weight=1)  # 预添加区域
-        container.rowconfigure(1, weight=1)  # 预删除区域
 
         ##################################
         # 预添加关系点区域
         ##################################
         add_frame = tb.Labelframe(container, text="预添加关系点", bootstyle="info")
-        add_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=(0, 5))
+        add_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         add_frame.columnconfigure(0, weight=1)
         add_frame.rowconfigure(1, weight=1)  # 树形视图区域
 
@@ -282,7 +291,7 @@ class XMLRelationApp:
             tree_container,
             columns=cols,
             show="headings",
-            height=4,  # 高度调整
+            height=8,  # 增加高度
             bootstyle="light",
             selectmode="extended"
         )
@@ -291,7 +300,7 @@ class XMLRelationApp:
         self.relations_tree.heading("object_id", text="客体 ID")
         self.relations_tree.heading("predicate", text="谓词")
 
-        # 设置列宽比例 - 移除stretch选项
+        # 设置列宽
         self.relations_tree.column("subject_id", width=80, anchor=tk.CENTER)
         self.relations_tree.column("subject_class", width=120, anchor=tk.W)
         self.relations_tree.column("object_id", width=80, anchor=tk.CENTER)
@@ -328,11 +337,22 @@ class XMLRelationApp:
             bootstyle="danger-outline",
         ).pack(side=tk.LEFT)
 
+    def create_right_panel(self, parent):
+        """创建右侧面板内容 - 预删除关系点和谓词列表"""
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)  # 预删除区域
+
+        # 使用Frame作为容器
+        container = tb.Frame(parent, bootstyle="light")
+        container.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(0, weight=1)  # 预删除区域
+
         ##################################
         # 预删除关系点区域
         ##################################
         delete_frame = tb.Labelframe(container, text="预删除关系点", bootstyle="danger")
-        delete_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 5))
+        delete_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=(0, 5))
         delete_frame.columnconfigure(0, weight=1)
         delete_frame.rowconfigure(1, weight=1)  # 树形视图区域
 
@@ -354,7 +374,7 @@ class XMLRelationApp:
             del_tree_container,
             columns=del_cols,
             show="headings",
-            height=4,  # 高度调整
+            height=8,  # 增加高度以填充空间
             bootstyle="light",
             selectmode="extended"
         )
@@ -362,7 +382,7 @@ class XMLRelationApp:
         self.deletion_tree.heading("object_id", text="客体 ID")
         self.deletion_tree.heading("predicate", text="谓词")
 
-        # 设置列宽比例 - 移除stretch选项
+        # 设置列宽
         self.deletion_tree.column("subject_id", width=80, anchor=tk.CENTER)
         self.deletion_tree.column("object_id", width=80, anchor=tk.CENTER)
         self.deletion_tree.column("predicate", width=150, anchor=tk.W)
@@ -426,109 +446,10 @@ class XMLRelationApp:
         if hasattr(self, 'temp_relations'):
             self.temp_relations = []
 
-    def create_right_panel(self, parent):
-        """创建右侧面板内容 - 优化布局"""
-        parent.columnconfigure(0, weight=1)
-        parent.rowconfigure(1, weight=1)  # 规则树形区域可扩展
-
-        # 规则预览标签
-        tb.Label(
-            parent,
-            text="当前规则预览",
-            font=("微软雅黑", 10, "bold"),
-            bootstyle="info"
-        ).grid(row=0, column=0, sticky="w", padx=5, pady=(5, 2))
-
-        # 规则树形视图容器
-        rule_container = tb.Frame(parent, bootstyle="default")
-        rule_container.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
-        rule_container.columnconfigure(0, weight=1)
-        rule_container.rowconfigure(0, weight=1)
-
-        # 规则树形视图
-        columns = ("object_type", "predicate")
-        self.rule_tree = tb.Treeview(
-            rule_container,
-            columns=columns,
-            show="headings",
-            height=12,  # 适当增加高度
-            bootstyle="light"
-        )
-        self.rule_tree.heading("object_type", text="对象类型", anchor=tk.W)
-        self.rule_tree.heading("predicate", text="谓词", anchor=tk.W)
-
-        # 设置列宽比例 - 移除stretch选项
-        self.rule_tree.column("object_type", width=150, anchor=tk.W)
-        self.rule_tree.column("predicate", width=150, anchor=tk.W)
-
-        # 滚动条
-        rule_scroll = tb.Scrollbar(
-            rule_container,
-            orient=tk.VERTICAL,
-            command=self.rule_tree.yview,
-            bootstyle="round"
-        )
-        self.rule_tree.configure(yscrollcommand=rule_scroll.set)
-
-        # 布局
-        self.rule_tree.grid(row=0, column=0, sticky="nsew")
-        rule_scroll.grid(row=0, column=1, sticky="ns")
-
-        # 操作按钮容器
-        btn_container = tb.Frame(parent)
-        btn_container.grid(row=2, column=0, sticky="ew", padx=5, pady=(0, 5))
-
-        tb.Button(
-            btn_container,
-            text="管理规则",
-            command=self.manage_rules,
-            bootstyle="primary-outline",
-            width=12
-        ).pack(side=tk.RIGHT, padx=(5, 0))
-
-        tb.Button(
-            btn_container,
-            text="编辑配置",
-            command=self.open_config,
-            bootstyle="secondary-outline",
-            width=12
-        ).pack(side=tk.RIGHT, padx=5)
-
     def update_stats(self):
         """更新统计信息"""
-        rule_count = len(self.rules)
-        entity_count = len(self.entity_classes)
-        predicate_count = len(self.predicates)
-        status = f"就绪 | {rule_count} 条规则 | {entity_count} 个实体类别 | {predicate_count} 个谓词"
+        status = "就绪"
         self.stats_label.config(text=status)
-
-    def populate_rule_preview(self):
-        """填充规则预览"""
-        for item in self.rule_tree.get_children():
-            self.rule_tree.delete(item)
-        for obj_type, predicate in self.rules.items():
-            self.rule_tree.insert("", tk.END, values=(obj_type, predicate))
-
-        # 更新统计信息
-        self.update_stats()
-
-    def manage_rules(self):
-        """打开规则管理窗口"""
-        manager = RuleManager(self.root, self.rules)
-        self.root.wait_window(manager)
-        self.rules = load_rules()
-        self.populate_rule_preview()
-
-    def open_config(self):
-        """打开配置窗口"""
-        config_dialog = ConfigDialog(self.root, self.config)
-        self.root.wait_window(config_dialog)
-        self.config = load_config()
-
-    def save_config(self):
-        """保存配置"""
-        save_config(self.config)
-        messagebox.showinfo("成功", "配置已保存！")
 
     def show_help(self):
         """显示帮助信息"""
@@ -537,15 +458,12 @@ class XMLRelationApp:
             "1. 文件设置\n"
             "   - 点击“浏览...”选择一个 CVAT 导出的 XML 标注文件\n"
             "   - 指定输出 XML 文件路径\n\n"
-            "2. 规则管理\n"
-            "   - 在右侧面板查看当前规则\n"
-            "   - 点击“管理规则”按钮添加/编辑规则\n\n"
+            "2. 自定义关系\n"
+            "   - 通过菜单“自定义关系”->“进入自定义关系点模式”添加额外关系\n\n"
             "3. 自动标注\n"
             "   - 点击“执行自动标注”按钮开始处理\n"
             "   - 处理进度将在底部显示\n\n"
-            "4. 自定义关系\n"
-            "   - 通过菜单“自定义关系”->“进入自定义关系点模式”添加额外关系\n\n"
-            "5. 标签配置\n"
+            "4. 标签配置\n"
             "   - 通过菜单“标签配置”导入或清空标签配置"
         )
         messagebox.showinfo("使用帮助", help_text)
@@ -555,7 +473,7 @@ class XMLRelationApp:
         about_text = (
             "CVAT 关系自动标注工具 v3.1\n\n"
             "该工具用于自动化处理 CVAT 标注文件，添加关系标注点。\n"
-            "支持自动生成关系点和自定义关系点。\n\n"
+            "支持自定义关系点。\n\n"
             "开发团队: DeepSeek AI\n"
             "发布日期: 2024年5月\n"
             "许可证: MIT"
@@ -660,20 +578,17 @@ class XMLRelationApp:
     def process_xml(self, input_file, output_file):
         # 处理XML文件
         try:
-
-            # 获取配置和规则
+            # 获取配置
             config = self.config  # 使用已有的配置
-            rules = self.rules  # 使用已有的规则
-
             # 进度回调函数
             def progress_callback(progress, message):
-                self.update_progress(progress, message)
+                # 使用 after 方法在主线程中安全更新 GUI
+                self.root.after(0, lambda: self.update_progress(progress, message))
 
             # 处理XML文件
             success, message = process_xml_file(
                 input_file,
                 output_file,
-                rules,
                 config,
                 self.custom_relations,  # 传递当前自定义关系
                 self.relations_to_delete,  # 传递当前删除列表
@@ -687,19 +602,19 @@ class XMLRelationApp:
                 self.relations_to_delete_details = []
 
                 # 更新UI显示
-                self.update_custom_relations_display()
-                self.update_deletion_list()
+                self.root.after(0, self.update_custom_relations_display)
+                self.root.after(0, self.update_deletion_list)
 
-                messagebox.showinfo("成功", message)
+                self.root.after(0, lambda: messagebox.showinfo("成功", message))
             else:
-                messagebox.showerror("错误", message)
+                self.root.after(0, lambda: messagebox.showerror("错误", message))
 
         except Exception as e:
-            messagebox.showerror("错误", f"处理XML文件失败: {str(e)}")
+            self.root.after(0, lambda: messagebox.showerror("错误", f"处理XML文件失败: {str(e)}"))
         finally:
             # 重新启用处理按钮
-            self.process_button.config(state=tk.NORMAL, bootstyle="success")
-            self.status_label.config(text="处理完成")
+            self.root.after(0, lambda: self.process_button.config(state=tk.NORMAL, bootstyle="success"))
+            self.root.after(0, lambda: self.status_label.config(text="处理完成"))
 
     def update_progress(self, progress, message):
         """更新进度信息"""
@@ -780,8 +695,6 @@ class XMLRelationApp:
     def open_custom_relation_dialog(self):
         # 获取当前选择的XML文件
         input_file = self.input_entry.get()  # 从输入框获取
-        #self.relations_to_delete = []  # 清空原始ID删除列表
-        #self.relations_to_delete_details = []  # 清空显示ID删除列表
         if not input_file:
             messagebox.showwarning("警告", "请先选择XML文件")
             return
@@ -823,7 +736,7 @@ class XMLRelationApp:
 
             # 更新自定义关系显示
             self.update_custom_relations_display()
-            # 新加：更新删除列表显示
+            # 更新删除列表显示
             self.update_deletion_list()
 
         except Exception as e:

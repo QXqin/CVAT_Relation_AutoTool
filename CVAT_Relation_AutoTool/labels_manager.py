@@ -22,18 +22,6 @@ def load_labels_config():
         return [], []
 
 
-def save_labels_config(entity_classes, predicates):
-    """
-    保存实体类别与谓词配置
-    """
-    data = {
-        "entity_classes": entity_classes,
-        "predicates": predicates
-    }
-    with open(LABELS_CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
 def import_labels_config(file_path):
     """
     从Excel/CSV导入标签配置
@@ -68,8 +56,6 @@ def import_labels_config(file_path):
                 new_predicates = df_predicates[col].dropna().astype(str).tolist()
                 break
 
-        # 保存配置
-        save_labels_config(new_entity_classes, new_predicates)
         return True, (new_entity_classes, new_predicates)
 
     except Exception as ex:
