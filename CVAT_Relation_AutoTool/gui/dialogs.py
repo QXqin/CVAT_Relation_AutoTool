@@ -556,7 +556,8 @@ class CustomRelationDialog(tb.Toplevel):
             self.subject_relation_counts = {}
 
         # 计算最大关系数用于颜色渐变
-        max_relations = max(self.subject_relation_counts.values()) if self.subject_relation_counts and len(self.subject_relation_counts) > 0 else 1
+        max_relations = max(self.subject_relation_counts.values()) if self.subject_relation_counts and len(
+            self.subject_relation_counts) > 0 else 1
 
         # 如果没有搜索词，显示所有主体
         if not search_term:
@@ -575,27 +576,27 @@ class CustomRelationDialog(tb.Toplevel):
                 item = self.subject_tree.insert("", tk.END, values=(display_id, category))
                 self.subject_tree.tag_configure(color, background=color, foreground='black')
                 self.subject_tree.item(item, tags=(color,))
-            return
+            return  # 直接返回，不执行后面的筛选逻辑
 
-            # 筛选并添加匹配项
-            for display_id, category in self.all_subjects:
-                # 匹配ID或类别（都转换为小写比较）
-                if (search_term in display_id.lower() or
-                        search_term in category.lower()):
-                    # 获取关系数量
-                    count = self.subject_relation_counts.get(display_id, 0)
+        # 筛选并添加匹配项
+        for display_id, category in self.all_subjects:
+            # 匹配ID或类别（都转换为小写比较）
+            if (search_term in display_id.lower() or
+                    search_term in category.lower()):
+                # 获取关系数量
+                count = self.subject_relation_counts.get(display_id, 0)
 
-                    # 计算渐变色 (从浅蓝色到深蓝色)
-                    ratio = count / max_relations
-                    r = int(230 * (1 - ratio))  # 红色分量减少
-                    g = int(240 * (1 - ratio))  # 绿色分量减少
-                    b = 255  # 蓝色保持较高
-                    color = f'#{r:02x}{g:02x}{b:02x}'
+                # 计算渐变色 (从浅蓝色到深蓝色)
+                ratio = count / max_relations
+                r = int(230 * (1 - ratio))  # 红色分量减少
+                g = int(240 * (1 - ratio))  # 绿色分量减少
+                b = 255  # 蓝色保持较高
+                color = f'#{r:02x}{g:02x}{b:02x}'
 
-                    # 插入行并设置背景色
-                    item = self.subject_tree.insert("", tk.END, values=(display_id, category))
-                    self.subject_tree.tag_configure(color, background=color, foreground='black')
-                    self.subject_tree.item(item, tags=(color,))
+                # 插入行并设置背景色
+                item = self.subject_tree.insert("", tk.END, values=(display_id, category))
+                self.subject_tree.tag_configure(color, background=color, foreground='black')
+                self.subject_tree.item(item, tags=(color,))
 
     # +++ 添加更新主体关系计数的方法 +++
     def update_relation_counts(self):
