@@ -4,11 +4,7 @@ from ttkbootstrap.constants import *
 import json
 import pandas as pd
 from config import DEFAULT_CONFIG
-import glob
-import re
-import os
-from PIL import Image, ImageDraw, ImageFont,ImageTk
-import numpy as np
+
 
 class ConfigDialog(tb.Toplevel):
     """配置对话框 - 使用ttkbootstrap美化"""
@@ -81,7 +77,6 @@ class CustomRelationDialog(tb.Toplevel):
         # 初始化本次添加的关系点列表
         self.new_relations = []  # 专门存储本次添加的关系点
         self.parent_app = parent_app  # 保存对主应用程序的引用
-        self.current_annotated_image = None  # 带标注的图像
         self.create_widgets()
         # 从临时自定义关系中加载
         self.load_temp_custom_relations()
@@ -241,132 +236,13 @@ class CustomRelationDialog(tb.Toplevel):
             bootstyle="primary"
         ).pack(pady=(0, 10))
 
-        # 使用PanedWindow分割图片浏览区域、主体列表和关系管理区域
+        # 使用PanedWindow分割主体列表和关系管理区域
         paned = tb.PanedWindow(content_frame, bootstyle="light", orient=tk.HORIZONTAL)
         paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # 添加图片浏览区域 (左侧)
-        image_frame = tb.Frame(paned, width=300, padding=5)
-        paned.add(image_frame, weight=7)  # 权重较小
-
-        # 图片浏览区域的控件
-        tb.Label(
-            image_frame,
-            text="图片浏览",
-            font=("微软雅黑", 10, "bold"),
-            bootstyle="inverse-light"
-        ).pack(fill=tk.X, pady=(0, 5))
-
-        # 创建顶部工具栏容器
-        toolbar_frame = tb.Frame(image_frame)
-        toolbar_frame.pack(fill=tk.X, pady=5)
-
-        # 左侧：图片文件夹选择按钮
-        tb.Button(
-            toolbar_frame,
-            text="选择图片文件夹",
-            command=self.select_image_folder,
-            bootstyle="primary",
-            width=15
-        ).pack(side=tk.LEFT, padx=(0, 10))
-
-        # 中间：图片导航按钮
-        nav_frame = tb.Frame(toolbar_frame)
-        nav_frame.pack(side=tk.LEFT, padx=(0, 10))
-        tb.Button(
-            nav_frame,
-            text="◀",  # 使用符号代替文字以节省空间
-            command=self.prev_image,
-            bootstyle="secondary",
-            width=3
-        ).pack(side=tk.LEFT, padx=(0, 2))
-        tb.Button(
-            nav_frame,
-            text="▶",  # 使用符号代替文字以节省空间
-            command=self.next_image,
-            bootstyle="secondary",
-            width=3
-        ).pack(side=tk.LEFT)
-
-        # 图片计数器标签
-        self.image_counter = tb.Label(
-            toolbar_frame,
-            text="0/0",
-            bootstyle="inverse-light",
-            width=6
-        )
-        self.image_counter.pack(side=tk.LEFT, padx=(0, 10))
-
-        # 右侧：缩放控件
-        zoom_frame = tb.Frame(toolbar_frame)
-        zoom_frame.pack(side=tk.LEFT)
-        tb.Label(zoom_frame, text="缩放:").pack(side=tk.LEFT)
-        self.scale_var = tk.StringVar(value="100%")
-        zoom_combo = tb.Combobox(
-            zoom_frame,
-            textvariable=self.scale_var,
-            values=["25%", "50%", "75%", "100%", "150%", "200%"],
-            width=7,  # 减小宽度
-            bootstyle="primary"
-        )
-        zoom_combo.pack(side=tk.LEFT, padx=(5, 0))
-        zoom_combo.bind("<<ComboboxSelected>>", self.update_image_scale)
-
-        # 图片显示区域
-        self.image_container = tb.Frame(image_frame)
-        self.image_container.pack(fill=tk.BOTH, expand=True, pady=5)
-
-        # 创建Canvas用于显示图片
-        self.canvas = tk.Canvas(self.image_container, bg='white')
-        self.canvas.pack(fill=tk.BOTH, expand=True)
-
-        # 添加滚动条
-        self.v_scroll = tb.Scrollbar(
-            self.image_container,
-            orient=tk.VERTICAL,
-            command=self.canvas.yview,
-            bootstyle="round"
-        )
-        self.h_scroll = tb.Scrollbar(
-            self.image_container,
-            orient=tk.HORIZONTAL,
-            command=self.canvas.xview,
-            bootstyle="round"
-        )
-        self.canvas.configure(yscrollcommand=self.v_scroll.set, xscrollcommand=self.h_scroll.set)
-
-        # 网格布局
-        self.canvas.grid(row=0, column=0, sticky="nsew")
-        self.v_scroll.grid(row=0, column=1, sticky="ns")
-        self.h_scroll.grid(row=1, column=0, sticky="ew")
-
-        # 配置权重
-        self.image_container.grid_rowconfigure(0, weight=1)
-        self.image_container.grid_columnconfigure(0, weight=1)
-
-        # 绑定鼠标滚轮缩放
-        self.canvas.bind("<MouseWheel>", self.on_mousewheel)  # Windows
-        self.canvas.bind("<Button-4>", self.on_mousewheel)  # Linux
-        self.canvas.bind("<Button-5>", self.on_mousewheel)  # Linux
-
-        # 初始变量
-        self.image_folder = None
-        self.image_files = []
-        self.current_image_index = -1
-        self.current_image = None
-        self.image_tk = None
-        self.scale_factor = 1.0
-        self.canvas_image = None
-
-        # 主体列表和关系管理区域容器 (占30%)
-        right_container = tb.PanedWindow(paned, orient=tk.VERTICAL, bootstyle="light")
-        paned.add(right_container, weight=3)  # 权重3表示30%
-        # 主体列表区域 (占30%中的40%)
-        left_frame = tb.Frame(right_container, padding=5)
-        right_container.add(left_frame, weight=2)  # 权重2表示40%
-        # 关系管理区域 (占30%中的60%)
-        right_frame = tb.Frame(right_container, padding=5)
-        right_container.add(right_frame, weight=3)  # 权重3表示60%
+        # 左侧：主体列表
+        left_frame = tb.Frame(paned, padding=5)
+        paned.add(left_frame)
 
         tb.Label(
             left_frame,
@@ -407,7 +283,7 @@ class CustomRelationDialog(tb.Toplevel):
             show="headings",
             selectmode="extended",
             bootstyle="light",
-            height=8
+            height=12
         )
         self.subject_tree.heading("id", text="ID", anchor=tk.CENTER)
         self.subject_tree.heading("category", text="类别", anchor=tk.W)
@@ -500,17 +376,16 @@ class CustomRelationDialog(tb.Toplevel):
         self.subject_info_label = tb.Label(
             self.subject_info_frame,
             text="未选择主体",
-            font=("微软雅黑", 9),
+            font=("微软雅黑", 10),
             bootstyle="light"
         )
-        self.subject_info_label.pack(padx=5, pady=(0, 3))
+        self.subject_info_label.pack(padx=5, pady=(0, 5))
 
         # 添加新关系区域
         add_relation_frame = tb.Labelframe(
             right_frame,
             text="添加新关系",
-            bootstyle="success",
-            padding = (5, 3)  # 减小内边距
+            bootstyle="success"
         )
         add_relation_frame.pack(fill=tk.X, pady=5)
 
@@ -573,8 +448,8 @@ class CustomRelationDialog(tb.Toplevel):
             text="添加关系",
             command=self.on_add,
             bootstyle="success",
-            padding=(3, 1)  # 减小内边距
-        ).pack(pady=3)  # 减小外边距
+            width=15
+        ).pack(pady=5)
 
         # 当前主体的关系列表
         relation_list_frame = tb.Labelframe(
@@ -670,23 +545,6 @@ class CustomRelationDialog(tb.Toplevel):
         self.context_menu = tk.Menu(self, tearoff=0)
         self.context_menu.add_command(label="复制关系", command=self.copy_relations)
         self.context_menu.add_command(label="粘贴关系", command=self.paste_relations)
-        # 鼠标拖动功能变量
-        self.drag_start_x = 0
-        self.drag_start_y = 0
-        self.dragging = False
-        self.scroll_start_x = 0
-        self.scroll_start_y = 0
-
-        # 绑定鼠标事件
-        self.canvas.bind("<ButtonPress-1>", self.start_drag)  # 左键按下
-        self.canvas.bind("<ButtonPress-2>", self.start_drag)  # 中键按下（Linux/macOS）
-        self.canvas.bind("<ButtonPress-3>", self.start_drag)  # 右键按下（Windows）
-        self.canvas.bind("<B1-Motion>", self.on_drag)  # 左键拖动
-        self.canvas.bind("<B2-Motion>", self.on_drag)  # 中键拖动（Linux/macOS）
-        self.canvas.bind("<B3-Motion>", self.on_drag)  # 右键拖动（Windows）
-        self.canvas.bind("<ButtonRelease-1>", self.end_drag)  # 左键释放
-        self.canvas.bind("<ButtonRelease-2>", self.end_drag)  # 中键释放（Linux/macOS）
-        self.canvas.bind("<ButtonRelease-3>", self.end_drag)  # 右键释放（Windows）
 
     # +++ 新增筛选方法 +++
     def filter_subjects(self, event=None):
@@ -1283,6 +1141,9 @@ class CustomRelationDialog(tb.Toplevel):
         # 更新主体列表显示（刷新颜色）
         self.filter_subjects()
 
+
+
+
     def save_state(self):
         """保存当前状态到历史记录"""
         # 最多保存10个历史状态
@@ -1305,268 +1166,3 @@ class CustomRelationDialog(tb.Toplevel):
 
         # 提示用户
         self.status_label.config(text="已撤销上一步操作")
-
-    def select_image_folder(self):
-        """选择图片文件夹"""
-        folder_path = tk.filedialog.askdirectory(title="选择包含图片的文件夹")
-        if folder_path:
-            self.image_folder = folder_path
-            # 获取所有支持的图片格式
-            image_exts = ["*.jpg", "*.jpeg", "*.png", "*.bmp", "*.gif"]
-            self.image_files = []
-            for ext in image_exts:
-                self.image_files.extend(glob.glob(os.path.join(folder_path, ext)))
-            self.image_files.sort()
-
-            if self.image_files:
-                self.current_image_index = 0
-                self.load_image(self.image_files[0])
-                # 更新计数器
-                self.update_counter()
-            else:
-                tk.messagebox.showwarning("无图片", "该文件夹中没有找到图片文件")
-                self.image_counter.config(text="0/0")
-
-    def load_image(self, image_path):
-        """加载并显示图片（添加标注）"""
-        try:
-            # 打开图片
-            self.current_image = Image.open(image_path)
-
-            # 提取帧索引
-            frame_index = self.extract_frame_index(image_path)
-
-            # 绘制标注
-            annotated_image = self.draw_annotations(self.current_image, frame_index)
-
-            # 更新显示
-            self.current_annotated_image = annotated_image
-            self.update_image_display()
-
-            # 更新标题显示当前图片信息
-            filename = os.path.basename(image_path)
-            self.title(f"自定义关系点模式 - {filename} ({self.current_image_index + 1}/{len(self.image_files)})")
-
-            # 更新计数器
-            self.update_counter()
-
-        except Exception as e:
-            tk.messagebox.showerror("图片加载错误", f"无法加载图片: {str(e)}")
-
-    def update_image_display(self):
-        """根据缩放比例更新图片显示（包含标注）"""
-        if not hasattr(self, 'current_annotated_image') or self.current_annotated_image is None:
-            return
-
-        # 获取缩放比例
-        scale_text = self.scale_var.get().replace("%", "")
-        try:
-            scale_factor = float(scale_text) / 100.0
-        except ValueError:
-            scale_factor = 1.0
-
-        # 计算新尺寸
-        width, height = self.current_annotated_image.size
-        new_width = int(width * scale_factor)
-        new_height = int(height * scale_factor)
-
-        # 缩放图片（保持高质量）
-        resized_img = self.current_annotated_image.resize(
-            (new_width, new_height),
-            Image.LANCZOS
-        )
-
-        # 转换为PhotoImage
-        self.image_tk = ImageTk.PhotoImage(resized_img)
-
-        # 更新Canvas
-        self.canvas.delete("all")
-        self.canvas.config(scrollregion=(0, 0, new_width, new_height))
-        self.canvas.create_image(0, 0, anchor="nw", image=self.image_tk)
-
-    def update_image_scale(self, event=None):
-        """更新图片缩放比例"""
-        self.update_image_display()
-
-    def prev_image(self):
-        """显示上一张图片"""
-        if self.image_files and self.current_image_index > 0:
-            self.current_image_index -= 1
-            self.load_image(self.image_files[self.current_image_index])
-            self.update_counter()
-
-    def next_image(self):
-        """显示下一张图片"""
-        if self.image_files and self.current_image_index < len(self.image_files) - 1:
-            self.current_image_index += 1
-            self.load_image(self.image_files[self.current_image_index])
-            self.update_counter()
-
-    def update_counter(self):
-        """更新图片计数器显示"""
-        if self.image_files:
-            count = f"{self.current_image_index + 1}/{len(self.image_files)}"
-            self.image_counter.config(text=count)
-        else:
-            self.image_counter.config(text="0/0")
-
-    def on_mousewheel(self, event):
-        """鼠标滚轮事件处理 - 缩放图片"""
-        if event.num == 5 or event.delta < 0:  # 向下滚轮或Linux Button-5
-            # 缩小
-            current_scale = float(self.scale_var.get().replace("%", "")) / 100
-            new_scale = max(0.25, current_scale - 0.1)
-            self.scale_var.set(f"{int(new_scale * 100)}%")
-        elif event.num == 4 or event.delta > 0:  # 向上滚轮或Linux Button-4
-            # 放大
-            current_scale = float(self.scale_var.get().replace("%", "")) / 100
-            new_scale = min(2.0, current_scale + 0.1)
-            self.scale_var.set(f"{int(new_scale * 100)}%")
-
-        self.update_image_display()
-        return "break"  # 阻止事件继续传播
-
-    def start_drag(self, event):
-        """开始拖动图片"""
-        self.dragging = True
-        self.drag_start_x = event.x
-        self.drag_start_y = event.y
-        self.scroll_start_x = self.canvas.canvasx(0)
-        self.scroll_start_y = self.canvas.canvasy(0)
-        self.canvas.config(cursor="fleur")  # 更改光标为拖动样式
-
-    def on_drag(self, event):
-        """拖动图片过程中"""
-        if self.dragging:
-            # 计算拖动距离
-            delta_x = event.x - self.drag_start_x
-            delta_y = event.y - self.drag_start_y
-
-            # 计算新的滚动位置
-            new_x = self.scroll_start_x - delta_x
-            new_y = self.scroll_start_y - delta_y
-
-            # 应用滚动位置
-            self.canvas.xview_moveto(new_x / self.canvas.winfo_width())
-            self.canvas.yview_moveto(new_y / self.canvas.winfo_height())
-
-    def end_drag(self, event):
-        """结束拖动"""
-        self.dragging = False
-        self.canvas.config(cursor="")  # 恢复默认光标
-
-    def draw_annotations(self, image, frame_index):
-        """在图像上绘制XML标注"""
-        if not hasattr(self, 'root_et') or self.root_et is None:
-            return image
-
-        # 创建图像副本用于绘制
-        img_with_annotations = image.copy()
-        draw = ImageDraw.Draw(img_with_annotations)
-
-        try:
-            # 设置字体
-            try:
-                font = ImageFont.truetype("arial.ttf", 14)
-            except:
-                font = ImageFont.load_default()
-
-            # 遍历所有轨迹
-            for track in self.root_et.findall('track'):
-                # 跳过关系轨迹
-                if track.get('label') == "Relation":
-                    continue
-
-                track_id = track.get('id')
-                label = track.get('label', 'object')
-
-                # 查找当前帧的边界框
-                for box in track.findall('box'):
-                    if int(box.get('frame')) == frame_index and box.get('outside') == '0':
-                        xtl = float(box.get('xtl'))
-                        ytl = float(box.get('ytl'))
-                        xbr = float(box.get('xbr'))
-                        ybr = float(box.get('ybr'))
-
-                        # 绘制边界框
-                        draw.rectangle([(xtl, ytl), (xbr, ybr)], outline="red", width=2)
-
-                        # 绘制标签文本
-                        text = f"{label} {track_id}"
-
-                        # 兼容不同Pillow版本
-                        try:
-                            # 新版本使用textbbox
-                            bbox = draw.textbbox((0, 0), text, font=font)
-                            text_width = bbox[2] - bbox[0]
-                            text_height = bbox[3] - bbox[1]
-                        except AttributeError:
-                            # 旧版本使用textsize
-                            text_width, text_height = draw.textsize(text, font=font)
-
-                        # 绘制文本背景
-                        draw.rectangle([(xtl, ytl - text_height),
-                                        (xtl + text_width, ytl)],
-                                       fill="red")
-                        draw.text((xtl, ytl - text_height), text, fill="white", font=font)
-
-            # 绘制关系点
-            for track in self.root_et.findall('track'):
-                if track.get('label') == "Relation":
-                    for points in track.findall('points'):
-                        if int(points.get('frame')) == frame_index and points.get('outside') == '0':
-                            point_str = points.get('points')
-                            if point_str:
-                                x, y = map(float, point_str.split(','))
-
-                                # 绘制关系点
-                                radius = 5
-                                draw.ellipse([(x - radius, y - radius),
-                                              (x + radius, y + radius)],
-                                             fill="blue")
-
-                                # 查找关系谓词
-                                predicate = "relation"
-                                for attr in points.findall('attribute'):
-                                    if attr.get('name') == 'predicate':
-                                        predicate = attr.text
-                                        break
-
-                                # 绘制谓词文本
-                                text = predicate
-
-                                # 兼容不同Pillow版本
-                                try:
-                                    # 新版本使用textbbox
-                                    bbox = draw.textbbox((0, 0), text, font=font)
-                                    text_width = bbox[2] - bbox[0]
-                                    text_height = bbox[3] - bbox[1]
-                                except AttributeError:
-                                    # 旧版本使用textsize
-                                    text_width, text_height = draw.textsize(text, font=font)
-
-                                draw.text((x + radius + 2, y - text_height // 2),
-                                          text, fill="blue", font=font)
-
-        except Exception as e:
-            print(f"绘制标注时出错: {e}")
-
-        return img_with_annotations
-
-    def extract_frame_index(self, filename):
-        """从图片文件名中提取帧索引"""
-        try:
-            # 尝试从文件名中提取数字
-            basename = os.path.basename(filename)
-            base = os.path.splitext(basename)[0]
-
-            # 匹配文件名中的数字序列
-            numbers = re.findall(r'\d+', base)
-            if numbers:
-                return int(numbers[-1])
-
-            # 如果没有数字，尝试使用文件名作为索引
-            return hash(base) % 1000000
-
-        except:
-            return 0
