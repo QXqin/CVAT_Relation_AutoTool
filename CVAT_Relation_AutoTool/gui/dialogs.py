@@ -49,6 +49,8 @@ class CustomRelationDialog(tb.Toplevel):
         self.temp_relations_to_delete = relations_to_delete[:]  # 使用副本
         self.temp_relations_to_delete_details = relations_to_delete_details[:]  # 使用副本
         self.temp_relations = []  # 临时存储本次添加的关系
+        # 添加多选状态变量
+        self.context_menu_selection = []  # 用于存储右键菜单触发时的选中项
         # 收集所有track_id（除relation之外的所有id）
         for category, track_ids in category_to_trackids.items():
             for track_id in track_ids:
@@ -1019,11 +1021,29 @@ class CustomRelationDialog(tb.Toplevel):
                 continue  # 跳过无效ID
 
     def show_context_menu(self, event):
-        """显示右键菜单"""
+        """显示右键菜单 - 防止多选状态丢失"""
+        # 获取鼠标位置下的项目
         item = self.subject_tree.identify_row(event.y)
+
+        # 如果点击在项目上，确保它被包含在选中项中
         if item:
-            self.subject_tree.selection_set(item)
+            # 获取当前所有选中项
+            current_selection = set(self.subject_tree.selection())
+
+            # 如果点击的项目不在当前选中项中
+            if item not in current_selection:
+                # 清除所有选中项，只选中当前点击的项目
+                self.subject_tree.selection_set(item)
+                self.context_menu_selection = [item]
+            else:
+                # 保持当前多选状态
+                self.context_menu_selection = list(current_selection)
+
+            # 显示菜单
             self.context_menu.post(event.x_root, event.y_root)
+        else:
+            # 点击在空白区域，不显示菜单
+            return
 
     def copy_relations(self):
         """复制选中主体的所有关系"""
@@ -1050,59 +1070,78 @@ class CustomRelationDialog(tb.Toplevel):
                     # 存储关系：客体ID、客体类别、谓词
                     self.copied_relations.append((rel[2], rel[3], rel[4]))
 
-        tb.dialogs.Messagebox.show_info(f"已复制 {len(self.copied_relations)} 条关系", "复制成功", parent=self)
+        #tb.dialogs.Messagebox.show_info(f"已复制 {len(self.copied_relations)} 条关系", "复制成功", parent=self)
 
     def paste_relations(self):
-        """将复制的所有关系粘贴到当前选中的主体"""
+        """将复制的所有关系粘贴到当前选中的多个主体 - 使用存储的多选状态"""
         if not self.copied_relations:
+            return
+
+        # 使用保存的选中项而不是当前选择
+        selected_items = self.context_menu_selection
+        if not selected_items:
             return
 
         # 保存当前状态用于撤销
         self.save_state()
 
-        selected_items = self.subject_tree.selection()
-        if not selected_items:
-            return
-
         added_count = 0
 
+        # 收集所有主体ID和类别
+        subjects = []
         for item in selected_items:
             values = self.subject_tree.item(item, "values")
-            if not values:
-                continue
-            subj_display_id = values[0]  # 当前主体的显示ID
-            subj_class = values[1]  # 当前主体的类别
+            if values:
+                subjects.append({
+                    "id": values[0],
+                    "class": values[1]
+                })
 
-            # 将复制的每个关系添加到当前主体
+        # 如果当前选中的主体在粘贴列表中，更新其关系显示
+        current_subject_in_selection = self.current_subject in [s["id"] for s in subjects]
+
+        # 创建关系存在性检查的缓存
+        existing_relations_cache = {}
+        for rel in self.temp_relations:
+            key = (rel[0], rel[2], rel[4])  # (subject, object, predicate)
+            existing_relations_cache[key] = True
+
+        # 为每个主体添加复制的每个关系
+        for subject in subjects:
+            subj_display_id = subject["id"]
+            subj_class = subject["class"]
+
             for rel in self.copied_relations:
                 obj_display_id, obj_class, predicate = rel
 
-                # 检查该关系是否已经存在
-                exists = False
-                for existing_rel in self.temp_relations:
-                    if (existing_rel[0] == subj_display_id and
-                            existing_rel[2] == obj_display_id and
-                            existing_rel[4] == predicate):
-                        exists = True
-                        break
+                # 检查关系是否已存在（使用缓存）
+                key = (subj_display_id, obj_display_id, predicate)
+                if key in existing_relations_cache:
+                    continue  # 跳过已存在的关系
 
-                if not exists:
-                    # 添加新关系
-                    new_rel = (subj_display_id, subj_class, obj_display_id, obj_class, predicate)
-                    self.temp_relations.append(new_rel)
-                    self.new_relations.append(new_rel)  # 同时添加到 new_relations
-                    added_count += 1
+                # 添加新关系
+                new_rel = (subj_display_id, subj_class, obj_display_id, obj_class, predicate)
+                self.temp_relations.append(new_rel)
+                self.new_relations.append(new_rel)  # 同时添加到 new_relations
+                added_count += 1
 
-                    # 更新关系计数
-                    if subj_display_id in self.subject_relation_counts:
-                        self.subject_relation_counts[subj_display_id] += 1
-                    else:
-                        self.subject_relation_counts[subj_display_id] = 1
+                # 添加到缓存
+                existing_relations_cache[key] = True
 
-        # 更新当前主体的关系列表
-        self.update_relation_list()
+                # 更新关系计数
+                if subj_display_id in self.subject_relation_counts:
+                    self.subject_relation_counts[subj_display_id] += 1
+                else:
+                    self.subject_relation_counts[subj_display_id] = 1
+
+        # 如果有选中的主体在粘贴列表中，更新其关系列表
+        if self.current_subject and current_subject_in_selection:
+            self.update_relation_list()
+
         # 更新主体列表显示（刷新颜色）
         self.filter_subjects()
+
+
 
 
     def save_state(self):

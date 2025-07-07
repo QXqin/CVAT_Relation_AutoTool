@@ -230,6 +230,11 @@ def process_xml_file(xml_path, output_path, config, custom_relations=None, relat
             delete_count = 0
             if progress_callback:
                 progress_callback(10, "没有要删除的关系点")
+
+        # 第二步：自动删除所有无效关系点（客体未知或ID为空）
+        invalid_delete_count = delete_unknown_relations(root)
+        if progress_callback:
+            progress_callback(15, f"已删除 {invalid_delete_count} 个无效关系点（客体未知或ID为空）")
         total_frames = 0
         meta = root.find('meta')
         if meta is not None:
@@ -294,7 +299,7 @@ def process_xml_file(xml_path, output_path, config, custom_relations=None, relat
             f.write(xml_str)
         if progress_callback:
             progress_callback(100, "保存完成")
-        return True, f"处理完成: 删除 {delete_count} 个关系点, 添加 {added_count} 个关系点"
+        return True, f"处理完成: 删除 {delete_count} 个用户指定的关系点, 删除 {invalid_delete_count} 个无效关系点, 添加 {added_count} 个关系点"
     except Exception as e:
         return False, f"处理错误: {str(e)}"
 
@@ -342,4 +347,64 @@ def delete_relations(root, relations_to_delete):
                         break
     for track in tracks_to_remove:
         root.remove(track)
+    return delete_count
+
+
+def delete_unknown_relations(root):
+    """删除所有客体类别为'未知'或客体ID为空的关系点"""
+    delete_count = 0
+    tracks_to_remove = []
+
+    # 创建ID到类别的映射
+    id_to_category = {}
+    for track in root.findall('track'):
+        if track.get('label') != "Relation":  # 跳过关系轨迹
+            track_id = track.get('id')
+            category = track.get('label', '未知')
+            id_to_category[track_id] = category
+
+    # 收集所有要删除的关系轨迹
+    for track in root.findall('track'):
+        if track.get('label') == "Relation":
+            for points in track.findall('points'):
+                if points.get('outside') == '1':
+                    continue
+
+                subj_id = None
+                obj_id = None
+                predicate = None
+
+                for attr in points.findall('attribute'):
+                    name = attr.get('name')
+                    if name == 'subject_id':
+                        subj_id = attr.text
+                    elif name == 'object_id':
+                        obj_id = attr.text
+                    elif name == 'predicate':
+                        predicate = attr.text
+
+                # 检查是否应该删除此关系点
+                should_delete = False
+
+                # 情况1：客体ID为空
+                if obj_id is None or obj_id == "":
+                    should_delete = True
+                # 情况2：客体类别为"未知"
+                elif obj_id in id_to_category:
+                    obj_category = id_to_category[obj_id]
+                    if obj_category == "未知":
+                        should_delete = True
+                # 情况3：客体ID在类别映射中不存在
+                else:
+                    should_delete = True
+
+                if should_delete:
+                    tracks_to_remove.append(track)
+                    delete_count += 1
+                    break
+
+    # 删除找到的关系轨迹
+    for track in tracks_to_remove:
+        root.remove(track)
+
     return delete_count

@@ -497,6 +497,7 @@ class XMLRelationApp:
 
                 # 构建类别到track ID的映射
                 self.category_to_trackids = {}
+                self.id_to_category = {}  # 初始化 id_to_category
                 for track in self.root_et.findall('track'):
                     label = track.get('label')
                     track_id = track.get('id')
@@ -505,6 +506,8 @@ class XMLRelationApp:
                         if key not in self.category_to_trackids:
                             self.category_to_trackids[key] = []
                         self.category_to_trackids[key].append(track_id)
+
+                        self.id_to_category[track_id] = label
 
                 self.status_label.config(text=f"已加载文件: {os.path.basename(file_path)}")
 
@@ -750,7 +753,7 @@ class XMLRelationApp:
         self.status_label.config(text="已清空预删除关系点列表")
 
     def update_deletion_list(self):
-        """更新删除列表显示"""
+        """更新删除列表显示 - 添加类别信息"""
         # 清除现有显示
         for item in self.deletion_tree.get_children():
             self.deletion_tree.delete(item)
@@ -759,8 +762,25 @@ class XMLRelationApp:
         for relation in self.relations_to_delete_details:
             if len(relation) >= 3:
                 subj_id, obj_id, predicate = relation[:3]
+
+                # 获取客体类别
+                obj_category = "未知"
+                if obj_id:  # 如果有客体ID
+                    try:
+                        raw_obj_id = str(int(obj_id) - 1)
+                        if hasattr(self, 'id_to_category') and raw_obj_id in self.id_to_category:
+                            obj_category = self.id_to_category[raw_obj_id]
+                        else:
+                            obj_category = "未知"
+                    except ValueError:
+                        obj_category = "无效ID"
+                else:  # 客体ID为空
+                    obj_category = "无客体ID"
+
+                # 添加类别信息
                 self.deletion_tree.insert("", tk.END, values=(
                     subj_id,
-                    obj_id,
+                    obj_id if obj_id else "无",
+                    obj_category,
                     predicate
                 ))
