@@ -1,4 +1,4 @@
-# main_window.py (修改后)
+# main_window.py (修改后 - 集成图片查看器)
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
@@ -8,6 +8,7 @@ from config import load_config
 from labels_manager import load_labels_config
 from xml_processor import process_xml_file
 from .dialogs import CustomRelationDialog
+from .image_viewer import ImageViewer
 import pandas as pd
 from datetime import datetime
 import json
@@ -17,13 +18,14 @@ from PIL import Image, ImageTk
 
 
 class XMLRelationApp:
-    """主应用程序窗口 - 使用ttkbootstrap美化"""
+    """主应用程序窗口 - 使用ttkbootstrap美化并集成图片查看器"""
 
     def __init__(self, root):
         self.root = root
-        self.root.title("CVAT 关系自动标注工具 v3.1")
-        self.root.geometry("900x700")
-        self.root.minsize(800, 600)
+        self.root.title("CVAT 关系自动标注工具 v3.2 - 带标注可视化")
+        self.root.geometry("1400x900")
+        self.root.minsize(1200, 800)
+        
         # 设置ttkbootstrap主题
         self.style = tb.Style(theme="minty")
         self.style.configure("TButton", font=("微软雅黑", 10))
@@ -39,8 +41,8 @@ class XMLRelationApp:
         self.entity_classes, self.predicates = load_labels_config()
         self.category_to_trackids = {}
         self.custom_relations = {}
-        self.relations_to_delete = []  # 存储要删除的关系点（原始ID）
-        self.relations_to_delete_details = []  # 存储要删除的关系点的详细信息（显示ID
+        self.relations_to_delete = []
+        self.relations_to_delete_details = []
         self.tree_et = None
         self.root_et = None
 
@@ -54,20 +56,18 @@ class XMLRelationApp:
     def load_icons(self):
         """加载图标资源"""
         try:
-            # 使用PIL加载和调整图标大小
             self.help_icon = self.create_icon("?", size=(16, 16))
             self.config_icon = self.create_icon("⚙️", size=(16, 16))
             self.process_icon = self.create_icon("▶️", size=(20, 20))
             self.folder_icon = self.create_icon("📂", size=(16, 16))
         except:
-            # 如果图标加载失败，使用文本
             self.help_icon = "?"
             self.config_icon = "⚙️"
             self.process_icon = "▶️"
             self.folder_icon = "📂"
 
     def create_icon(self, text, size=(24, 24)):
-        """创建文本图标 - 修复stretch问题"""
+        """创建文本图标"""
         img = Image.new('RGBA', size, (0, 0, 0, 0))
         return ImageTk.PhotoImage(img)
 
@@ -77,10 +77,19 @@ class XMLRelationApp:
 
         # 文件菜单
         file_menu = tb.Menu(menubar, tearoff=0)
-        file_menu.add_command(label="打开文件", command=self.browse_input)
+        file_menu.add_command(label="打开XML文件", command=self.browse_input)
         file_menu.add_separator()
         file_menu.add_command(label="退出", command=self.root.quit)
         menubar.add_cascade(label="文件", menu=file_menu)
+
+        # 视图菜单（新增）
+        view_menu = tb.Menu(menubar, tearoff=0)
+        view_menu.add_command(
+            label="切换标注视图",
+            command=self.toggle_viewer,
+            accelerator="Ctrl+V"
+        )
+        menubar.add_cascade(label="视图", menu=view_menu)
 
         # 自定义关系菜单
         relation_menu = tb.Menu(menubar, tearoff=0)
@@ -115,6 +124,7 @@ class XMLRelationApp:
         # 添加快捷键
         self.root.bind("<Control-r>", lambda e: self.open_custom_relation_dialog())
         self.root.bind("<Control-i>", lambda e: self.handle_import_labels())
+        self.root.bind("<Control-v>", lambda e: self.toggle_viewer())
 
     def create_file_settings(self, parent):
         """创建文件设置区域"""
@@ -126,8 +136,7 @@ class XMLRelationApp:
         )
         file_frame.pack(fill=tk.X, pady=5)
 
-        # 网格布局 - 更精确地控制间距
-        file_frame.columnconfigure(1, weight=1)  # 输入框列可扩展
+        file_frame.columnconfigure(1, weight=1)
 
         # 输入文件
         tb.Label(file_frame, text="CVAT XML 文件:").grid(
@@ -160,43 +169,61 @@ class XMLRelationApp:
         ).grid(row=1, column=2, padx=5, pady=5)
 
     def create_widgets(self):
-        """创建主界面控件 - 优化布局"""
+        """创建主界面控件 - 添加图片查看器"""
         # 创建主容器
         main_container = tb.Frame(self.root, bootstyle="default")
         main_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         # 顶部文件设置区域
         top_frame = tb.Frame(main_container, bootstyle="light")
-        top_frame.pack(fill=tk.X, padx=5, pady=(0, 15))
+        top_frame.pack(fill=tk.X, padx=5, pady=(0, 10))
 
-        # 文件设置区域
         self.create_file_settings(top_frame)
 
-        # 主内容区域 - 使用PanedWindow支持手动调整大小
-        self.main_paned = tb.PanedWindow(
-            main_container,
-            orient=tk.HORIZONTAL,
-            bootstyle="light"
-        )
-        self.main_paned.pack(fill=tk.BOTH, expand=True, pady=5)
+        # 主内容区域 - 使用Notebook标签页
+        self.notebook = tb.Notebook(main_container, bootstyle="primary")
+        self.notebook.pack(fill=tk.BOTH, expand=True, pady=5)
 
-        # 左侧面板 - 预添加关系点
-        left_panel = tb.Frame(self.main_paned, bootstyle="light", width=400)
-        self.create_left_panel(left_panel)
-        self.main_paned.add(left_panel)
+        # 标签页1：关系管理
+        relation_tab = tb.Frame(self.notebook)
+        self.notebook.add(relation_tab, text="  关系管理  ")
+        self.create_relation_tab(relation_tab)
 
-        # 分隔符
-        self.main_paned.add(tb.Separator(self.main_paned, orient=tk.VERTICAL))
-
-        # 右侧面板 - 预删除关系点和谓词列表
-        right_panel = tb.Frame(self.main_paned, bootstyle="light", width=300)
-        self.create_right_panel(right_panel)
-        self.main_paned.add(right_panel)
+        # 标签页2：标注可视化（新增）
+        viewer_tab = tb.Frame(self.notebook)
+        self.notebook.add(viewer_tab, text="  标注可视化  ")
+        self.create_viewer_tab(viewer_tab)
 
         # 底部操作区域
         bottom_frame = tb.Frame(main_container)
-        bottom_frame.pack(fill=tk.X, padx=5, pady=(15, 5))
+        bottom_frame.pack(fill=tk.X, padx=5, pady=(10, 5))
         self.create_bottom_controls(bottom_frame)
+
+    def create_relation_tab(self, parent):
+        """创建关系管理标签页"""
+        # 使用PanedWindow分割
+        paned = tb.PanedWindow(parent, bootstyle="light", orient=tk.HORIZONTAL)
+        paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # 左侧面板
+        left_panel = tb.Frame(paned, bootstyle="light", width=400)
+        self.create_left_panel(left_panel)
+        paned.add(left_panel)
+
+        # 右侧面板
+        right_panel = tb.Frame(paned, bootstyle="light", width=300)
+        self.create_right_panel(right_panel)
+        paned.add(right_panel)
+
+    def create_viewer_tab(self, parent):
+        """创建标注可视化标签页"""
+        # 创建图片查看器
+        self.image_viewer = ImageViewer(parent, bootstyle="light")
+        self.image_viewer.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+    def toggle_viewer(self):
+        """切换到标注视图"""
+        self.notebook.select(1)
 
     def create_bottom_controls(self, parent):
         """创建底部操作控件"""
@@ -204,11 +231,10 @@ class XMLRelationApp:
         progress_container = tb.Frame(parent, bootstyle="light")
         progress_container.pack(fill=tk.X, pady=(0, 15))
 
-        # 添加统计信息标签
+        # 统计信息标签
         stats_frame = tb.Frame(progress_container)
         stats_frame.pack(side=tk.LEFT, padx=(0, 10))
 
-        # 创建stats_label属性
         self.stats_label = tb.Label(
             stats_frame,
             text="就绪 | 0 个实体类别 | 0 个谓词",
@@ -255,23 +281,20 @@ class XMLRelationApp:
         self.status_label.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(10, 10))
 
     def create_left_panel(self, parent):
-        """创建左侧面板内容 - 预添加关系点区域"""
+        """创建左侧面板内容"""
         parent.columnconfigure(0, weight=1)
-        parent.rowconfigure(0, weight=1)  # 让整个面板在父容器中扩展
+        parent.rowconfigure(0, weight=1)
 
-        # 使用Frame作为容器
         container = tb.Frame(parent, bootstyle="light")
         container.grid(row=0, column=0, sticky="nsew")
         container.columnconfigure(0, weight=1)
-        container.rowconfigure(0, weight=1)  # 预添加区域
+        container.rowconfigure(0, weight=1)
 
-        ##################################
         # 预添加关系点区域
-        ##################################
         add_frame = tb.Labelframe(container, text="预添加关系点", bootstyle="info")
         add_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         add_frame.columnconfigure(0, weight=1)
-        add_frame.rowconfigure(1, weight=1)  # 树形视图区域
+        add_frame.rowconfigure(1, weight=1)
 
         tb.Label(
             add_frame,
@@ -285,13 +308,13 @@ class XMLRelationApp:
         tree_container.columnconfigure(0, weight=1)
         tree_container.rowconfigure(0, weight=1)
 
-        # 创建树形视图显示关系点
+        # 创建树形视图
         cols = ("subject_id", "subject_class", "object_id", "predicate")
         self.relations_tree = tb.Treeview(
             tree_container,
             columns=cols,
             show="headings",
-            height=8,  # 增加高度
+            height=8,
             bootstyle="light",
             selectmode="extended"
         )
@@ -300,13 +323,11 @@ class XMLRelationApp:
         self.relations_tree.heading("object_id", text="客体 ID")
         self.relations_tree.heading("predicate", text="谓词")
 
-        # 设置列宽
         self.relations_tree.column("subject_id", width=80, anchor=tk.CENTER)
         self.relations_tree.column("subject_class", width=120, anchor=tk.W)
         self.relations_tree.column("object_id", width=80, anchor=tk.CENTER)
         self.relations_tree.column("predicate", width=150, anchor=tk.W)
 
-        # 滚动条
         vsb = tb.Scrollbar(
             tree_container,
             orient=tk.VERTICAL,
@@ -315,7 +336,6 @@ class XMLRelationApp:
         )
         self.relations_tree.configure(yscrollcommand=vsb.set)
 
-        # 使用grid布局放置组件
         self.relations_tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
 
@@ -338,23 +358,20 @@ class XMLRelationApp:
         ).pack(side=tk.LEFT)
 
     def create_right_panel(self, parent):
-        """创建右侧面板内容 - 预删除关系点和谓词列表"""
+        """创建右侧面板内容"""
         parent.columnconfigure(0, weight=1)
-        parent.rowconfigure(0, weight=1)  # 预删除区域
+        parent.rowconfigure(0, weight=1)
 
-        # 使用Frame作为容器
         container = tb.Frame(parent, bootstyle="light")
         container.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         container.columnconfigure(0, weight=1)
-        container.rowconfigure(0, weight=1)  # 预删除区域
+        container.rowconfigure(0, weight=1)
 
-        ##################################
         # 预删除关系点区域
-        ##################################
         delete_frame = tb.Labelframe(container, text="预删除关系点", bootstyle="danger")
         delete_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=(0, 5))
         delete_frame.columnconfigure(0, weight=1)
-        delete_frame.rowconfigure(1, weight=1)  # 树形视图区域
+        delete_frame.rowconfigure(1, weight=1)
 
         tb.Label(
             delete_frame,
@@ -368,13 +385,13 @@ class XMLRelationApp:
         del_tree_container.columnconfigure(0, weight=1)
         del_tree_container.rowconfigure(0, weight=1)
 
-        # 创建树形视图显示要删除的关系点
+        # 创建树形视图
         del_cols = ("subject_id", "object_id", "predicate")
         self.deletion_tree = tb.Treeview(
             del_tree_container,
             columns=del_cols,
             show="headings",
-            height=8,  # 增加高度以填充空间
+            height=8,
             bootstyle="light",
             selectmode="extended"
         )
@@ -382,12 +399,10 @@ class XMLRelationApp:
         self.deletion_tree.heading("object_id", text="客体 ID")
         self.deletion_tree.heading("predicate", text="谓词")
 
-        # 设置列宽
         self.deletion_tree.column("subject_id", width=80, anchor=tk.CENTER)
         self.deletion_tree.column("object_id", width=80, anchor=tk.CENTER)
         self.deletion_tree.column("predicate", width=150, anchor=tk.W)
 
-        # 滚动条
         del_vsb = tb.Scrollbar(
             del_tree_container,
             orient=tk.VERTICAL,
@@ -396,7 +411,6 @@ class XMLRelationApp:
         )
         self.deletion_tree.configure(yscrollcommand=del_vsb.set)
 
-        # 使用grid布局放置组件
         self.deletion_tree.grid(row=0, column=0, sticky="nsew")
         del_vsb.grid(row=0, column=1, sticky="ns")
 
@@ -413,13 +427,10 @@ class XMLRelationApp:
 
     def update_custom_relations_display(self):
         """更新预添加关系点的显示"""
-        # 清除现有显示
         for item in self.relations_tree.get_children():
             self.relations_tree.delete(item)
 
-        # 添加所有自定义关系点（使用原始ID）
         for subj_id, rel_list in self.custom_relations.items():
-            # 获取主体类别
             subj_class = "未知"
             if hasattr(self, 'root_et') and self.root_et:
                 for track in self.root_et.findall('track'):
@@ -428,7 +439,6 @@ class XMLRelationApp:
                         break
 
             for obj_id, pred in rel_list:
-                # 添加显示项目（显示为CVAT格式ID+1）
                 self.relations_tree.insert("", tk.END, values=(
                     str(int(subj_id) + 1),
                     subj_class,
@@ -442,7 +452,6 @@ class XMLRelationApp:
         self.update_custom_relations_display()
         self.status_label.config(text="已清空自定义关系点列表")
 
-        # 同时清空临时关系
         if hasattr(self, 'temp_relations'):
             self.temp_relations = []
 
@@ -456,26 +465,33 @@ class XMLRelationApp:
         help_text = (
             "CVAT 关系自动标注工具 使用指南\n\n"
             "1. 文件设置\n"
-            "   - 点击“浏览...”选择一个 CVAT 导出的 XML 标注文件\n"
+            "   - 点击'浏览...'选择一个 CVAT 导出的 XML 标注文件\n"
             "   - 指定输出 XML 文件路径\n\n"
-            "2. 自定义关系\n"
-            "   - 通过菜单“自定义关系”->“进入自定义关系点模式”添加额外关系\n\n"
-            "3. 自动标注\n"
-            "   - 点击“执行自动标注”按钮开始处理\n"
+            "2. 标注可视化（新功能）\n"
+            "   - 切换到'标注可视化'标签页\n"
+            "   - 点击'导入图片文件夹'选择图片目录\n"
+            "   - 使用导航按钮查看不同帧的标注\n"
+            "   - 可切换显示边界框、关系点和标签\n\n"
+            "3. 自定义关系\n"
+            "   - 通过菜单'自定义关系'->'进入自定义关系点模式'添加额外关系\n\n"
+            "4. 自动标注\n"
+            "   - 点击'执行自动标注'按钮开始处理\n"
             "   - 处理进度将在底部显示\n\n"
-            "4. 标签配置\n"
-            "   - 通过菜单“标签配置”导入或清空标签配置"
+            "5. 标签配置\n"
+            "   - 通过菜单'标签配置'导入或清空标签配置"
         )
         messagebox.showinfo("使用帮助", help_text)
 
     def show_about(self):
         """显示关于信息"""
         about_text = (
-            "CVAT 关系自动标注工具 v3.1\n\n"
+            "CVAT 关系自动标注工具 v3.2\n\n"
             "该工具用于自动化处理 CVAT 标注文件，添加关系标注点。\n"
-            "支持自定义关系点。\n\n"
-            "开发团队: DeepSeek AI\n"
-            "发布日期: 2024年5月\n"
+            "支持自定义关系点和标注可视化功能。\n\n"
+            "新增功能:\n"
+            "- 图片导入与标注可视化\n"
+            "- 帧导航与缩放\n"
+            "- 边界框和关系点显示\n\n"
             "许可证: MIT"
         )
         messagebox.showinfo("关于", about_text)
@@ -491,13 +507,11 @@ class XMLRelationApp:
             self.input_entry.insert(0, file_path)
 
             try:
-                # 解析XML并构建类别映射
                 self.tree_et = ET.parse(self.input_file)
                 self.root_et = self.tree_et.getroot()
 
-                # 构建类别到track ID的映射
                 self.category_to_trackids = {}
-                self.id_to_category = {}  # 初始化 id_to_category
+                self.id_to_category = {}
                 for track in self.root_et.findall('track'):
                     label = track.get('label')
                     track_id = track.get('id')
@@ -506,10 +520,13 @@ class XMLRelationApp:
                         if key not in self.category_to_trackids:
                             self.category_to_trackids[key] = []
                         self.category_to_trackids[key].append(track_id)
-
                         self.id_to_category[track_id] = label
 
                 self.status_label.config(text=f"已加载文件: {os.path.basename(file_path)}")
+
+                # 加载XML到图片查看器
+                if hasattr(self, 'image_viewer'):
+                    self.image_viewer.load_xml(file_path)
 
             except Exception as e:
                 messagebox.showerror("错误", f"解析 XML 文件失败：{e}")
@@ -518,7 +535,6 @@ class XMLRelationApp:
                 self.status_label.config(text="文件解析错误")
                 return
 
-            # 自动生成输出路径
             if self.config.get('auto_generate_output', True):
                 dir_name = os.path.dirname(file_path)
                 base_name = os.path.splitext(os.path.basename(file_path))[0]
@@ -541,7 +557,6 @@ class XMLRelationApp:
 
     def start_processing(self):
         """开始执行自动标注"""
-        # 获取输入输出文件路径
         self.input_file = self.input_entry.get()
         self.output_file = self.output_entry.get()
 
@@ -552,12 +567,10 @@ class XMLRelationApp:
             messagebox.showerror("错误", "请选择输出 XML 文件")
             return
 
-        # 禁用按钮
         self.process_button.config(state=tk.DISABLED, bootstyle="secondary")
         self.progress_bar['value'] = 0
         self.status_label.config(text="开始处理...")
 
-        # 在后台线程中执行处理
         processing_thread = threading.Thread(
             target=self.process_xml,
             args=(self.input_file, self.output_file)
@@ -565,7 +578,6 @@ class XMLRelationApp:
         processing_thread.daemon = True
         processing_thread.start()
 
-        # 在后台线程结束后更新UI
         self.root.after(100, self.check_thread_status, processing_thread)
 
     def check_thread_status(self, thread):
@@ -573,40 +585,37 @@ class XMLRelationApp:
         if thread.is_alive():
             self.root.after(100, self.check_thread_status, thread)
         else:
-            # 更新自定义关系显示
             self.update_custom_relations_display()
-            # 更新删除列表
             self.update_deletion_list()
 
     def process_xml(self, input_file, output_file):
-        # 处理XML文件
+        """处理XML文件"""
         try:
-            # 获取配置
-            config = self.config  # 使用已有的配置
-            # 进度回调函数
+            config = self.config
+            
             def progress_callback(progress, message):
-                # 使用 after 方法在主线程中安全更新 GUI
                 self.root.after(0, lambda: self.update_progress(progress, message))
 
-            # 处理XML文件
             success, message = process_xml_file(
                 input_file,
                 output_file,
                 config,
-                self.custom_relations,  # 传递当前自定义关系
-                self.relations_to_delete,  # 传递当前删除列表
+                self.custom_relations,
+                self.relations_to_delete,
                 progress_callback
             )
 
             if success:
-                # 处理成功后清空自定义关系和删除列表
                 self.custom_relations = {}
                 self.relations_to_delete = []
                 self.relations_to_delete_details = []
 
-                # 更新UI显示
                 self.root.after(0, self.update_custom_relations_display)
                 self.root.after(0, self.update_deletion_list)
+
+                # 重新加载XML到图片查看器
+                if hasattr(self, 'image_viewer'):
+                    self.root.after(0, lambda: self.image_viewer.load_xml(output_file))
 
                 self.root.after(0, lambda: messagebox.showinfo("成功", message))
             else:
@@ -615,13 +624,12 @@ class XMLRelationApp:
         except Exception as e:
             self.root.after(0, lambda: messagebox.showerror("错误", f"处理XML文件失败: {str(e)}"))
         finally:
-            # 重新启用处理按钮
             self.root.after(0, lambda: self.process_button.config(state=tk.NORMAL, bootstyle="success"))
             self.root.after(0, lambda: self.status_label.config(text="处理完成"))
 
     def update_progress(self, progress, message):
         """更新进度信息"""
-        if self.root:  # 确保窗口仍然存在
+        if self.root:
             self.progress_bar['value'] = progress
             self.status_label.config(text=message)
             self.root.update_idletasks()
@@ -636,12 +644,9 @@ class XMLRelationApp:
             return
 
         try:
-            # 尝试导入标签
             if file_path.lower().endswith((".xlsx", ".xls")):
-                # 解析Excel文件
                 xls = pd.ExcelFile(file_path)
 
-                # 假设第一个sheet包含实体类别
                 entity_df = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
                 new_entity_classes = []
                 for col in entity_df.columns:
@@ -649,7 +654,6 @@ class XMLRelationApp:
                         new_entity_classes = entity_df[col].dropna().astype(str).tolist()
                         break
 
-                # 第二个sheet包含谓词
                 pred_df = pd.read_excel(xls, sheet_name=xls.sheet_names[1])
                 new_predicates = []
                 for col in pred_df.columns:
@@ -657,7 +661,6 @@ class XMLRelationApp:
                         new_predicates = pred_df[col].dropna().astype(str).tolist()
                         break
 
-                # 保存配置
                 data = {
                     "entity_classes": new_entity_classes,
                     "predicates": new_predicates
@@ -665,11 +668,9 @@ class XMLRelationApp:
                 with open("labels_config.json", "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
 
-                # 更新内存中的配置
                 self.entity_classes = new_entity_classes
                 self.predicates = new_predicates
 
-                # 更新UI
                 self.update_stats()
 
                 messagebox.showinfo("成功", f"导入 {len(new_entity_classes)} 个实体类别和 {len(new_predicates)} 个谓词")
@@ -689,29 +690,25 @@ class XMLRelationApp:
         if os.path.exists("labels_config.json"):
             os.remove("labels_config.json")
 
-        # 更新UI
         self.update_stats()
 
         messagebox.showinfo("提示", "已清空标签配置")
         self.status_label.config(text="标签配置已清空")
 
     def open_custom_relation_dialog(self):
-        # 获取当前选择的XML文件
-        input_file = self.input_entry.get()  # 从输入框获取
+        """打开自定义关系对话框"""
+        input_file = self.input_entry.get()
         if not input_file:
             messagebox.showwarning("警告", "请先选择XML文件")
             return
 
-        # 解析XML文件
         try:
             tree = ET.parse(input_file)
             root = tree.getroot()
 
-            # 获取实体类别和谓词列表
             entity_classes = self.entity_classes
             predicates = self.predicates
 
-            # 构建类别到track ID的映射
             category_to_trackids = {}
             for track in root.findall('track'):
                 label = track.get('label')
@@ -722,7 +719,6 @@ class XMLRelationApp:
                         category_to_trackids[key] = []
                     category_to_trackids[key].append(track_id)
 
-            # 打开自定义关系对话框
             custom_dialog = CustomRelationDialog(
                 self.root,
                 input_file,
@@ -730,16 +726,14 @@ class XMLRelationApp:
                 entity_classes,
                 predicates,
                 category_to_trackids,
-                self.custom_relations,  # 传递已有的自定义关系
+                self.custom_relations,
                 self.relations_to_delete,
                 self.relations_to_delete_details,
                 self
             )
             self.root.wait_window(custom_dialog)
 
-            # 更新自定义关系显示
             self.update_custom_relations_display()
-            # 更新删除列表显示
             self.update_deletion_list()
 
         except Exception as e:
@@ -753,19 +747,16 @@ class XMLRelationApp:
         self.status_label.config(text="已清空预删除关系点列表")
 
     def update_deletion_list(self):
-        """更新删除列表显示 - 添加类别信息"""
-        # 清除现有显示
+        """更新删除列表显示"""
         for item in self.deletion_tree.get_children():
             self.deletion_tree.delete(item)
 
-        # 添加所有删除项（使用显示ID）
         for relation in self.relations_to_delete_details:
             if len(relation) >= 3:
                 subj_id, obj_id, predicate = relation[:3]
 
-                # 获取客体类别
                 obj_category = "未知"
-                if obj_id:  # 如果有客体ID
+                if obj_id:
                     try:
                         raw_obj_id = str(int(obj_id) - 1)
                         if hasattr(self, 'id_to_category') and raw_obj_id in self.id_to_category:
@@ -774,10 +765,9 @@ class XMLRelationApp:
                             obj_category = "未知"
                     except ValueError:
                         obj_category = "无效ID"
-                else:  # 客体ID为空
+                else:
                     obj_category = "无客体ID"
 
-                # 添加类别信息
                 self.deletion_tree.insert("", tk.END, values=(
                     subj_id,
                     obj_id if obj_id else "无",
