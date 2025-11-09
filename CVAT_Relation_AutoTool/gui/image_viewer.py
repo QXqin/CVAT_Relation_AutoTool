@@ -36,6 +36,12 @@ class ImageViewer(tb.Frame):
         self.mouse_x = 0
         self.mouse_y = 0
         
+        # 性能优化
+        self.last_hover_check = 0  # 上次检查高亮的时间
+        self.hover_check_interval = 0.1  # 检查间隔（秒）100ms，减少检查频率
+        self.boxes_cache = {}  # 缓存当前帧的框信息 {frame: [(track_id, xtl, ytl, xbr, ybr, area, label), ...]}
+        self.pending_hover_update = None  # 待处理的高亮更新
+        
         self.create_widgets()
         
     def create_widgets(self):
@@ -288,6 +294,22 @@ class ImageViewer(tb.Frame):
         
         try:
             self.original_image = Image.open(image_path)
+            
+            # 清空高亮状态
+            self.hovered_box = None
+            
+            # 清空缓存（切换帧时）
+            # 只保留当前帧和相邻帧的缓存以节省内存
+            frames_to_keep = {
+                self.current_frame - 1,
+                self.current_frame,
+                self.current_frame + 1
+            }
+            self.boxes_cache = {
+                k: v for k, v in self.boxes_cache.items()
+                if k in frames_to_keep
+            }
+            
             self.update_display()
             self.update_frame_label()
         except Exception as e:
@@ -406,18 +428,21 @@ class ImageViewer(tb.Frame):
                     text_x = xtl + 5
                     text_y = ytl + 5
                     
-                    # 绘制文字描边（白色，提高可读性）
-                    # 使用多次绘制来模拟描边效果
-                    outline_width = 2
-                    for dx in range(-outline_width, outline_width + 1):
-                        for dy in range(-outline_width, outline_width + 1):
-                            if dx != 0 or dy != 0:
-                                draw.text(
-                                    (text_x + dx, text_y + dy),
-                                    text,
-                                    fill='white',
-                                    font=font
-                                )
+                    # 优化的描边绘制：只绘制8个方向而不是25次
+                    # 这样可以大幅提升性能
+                    outline_offsets = [
+                        (-1, -1), (0, -1), (1, -1),
+                        (-1, 0),           (1, 0),
+                        (-1, 1),  (0, 1),  (1, 1)
+                    ]
+                    
+                    for dx, dy in outline_offsets:
+                        draw.text(
+                            (text_x + dx, text_y + dy),
+                            text,
+                            fill='white',
+                            font=font
+                        )
                     
                     # 绘制文字主体（使用边框颜色）
                     draw.text(
@@ -588,6 +613,11 @@ class ImageViewer(tb.Frame):
         if not self.original_image:
             return
         
+        # 缩放时取消待处理的高亮更新，避免性能问题
+        if self.pending_hover_update:
+            self.after_cancel(self.pending_hover_update)
+            self.pending_hover_update = None
+        
         # 获取鼠标在canvas上的位置
         x = self.canvas.canvasx(event.x)
         y = self.canvas.canvasy(event.y)
@@ -639,6 +669,11 @@ class ImageViewer(tb.Frame):
         self.drag_start_x = event.x
         self.drag_start_y = event.y
         
+        # 拖动时取消待处理的高亮更新
+        if self.pending_hover_update:
+            self.after_cancel(self.pending_hover_update)
+            self.pending_hover_update = None
+        
         # 改变鼠标样式为抓手
         self.canvas.config(cursor="fleur")
     
@@ -687,8 +722,8 @@ class ImageViewer(tb.Frame):
         self.is_dragging = False
         # 恢复鼠标样式
         self.canvas.config(cursor="")
-        # 触发一次鼠标移动事件更新高亮
-        self.on_mouse_move(event)
+        # 延迟触发高亮检查，避免立即重绘
+        self.after(100, lambda: self._do_hover_check(event.x, event.y))
     
     def on_canvas_enter(self, event):
         """鼠标进入canvas"""
@@ -705,32 +740,80 @@ class ImageViewer(tb.Frame):
             self.update_display()
     
     def on_mouse_move(self, event):
-        """鼠标移动事件 - 用于高亮"""
+        """鼠标移动事件 - 用于高亮（优化版）"""
         if self.is_dragging or not self.original_image:
             return
         
+        # 防抖：限制检查频率
+        import time
+        current_time = time.time()
+        if current_time - self.last_hover_check < self.hover_check_interval:
+            # 取消之前的待处理更新
+            if self.pending_hover_update:
+                self.after_cancel(self.pending_hover_update)
+            # 安排延迟更新
+            self.pending_hover_update = self.after(
+                int(self.hover_check_interval * 1000),
+                lambda: self._do_hover_check(event.x, event.y)
+            )
+            return
+        
+        self.last_hover_check = current_time
+        self._do_hover_check(event.x, event.y)
+    
+    def _do_hover_check(self, x, y):
+        """实际执行高亮检查"""
+        if not self.original_image:
+            return
+        
         # 获取鼠标在原始图片上的坐标
-        canvas_x = self.canvas.canvasx(event.x)
-        canvas_y = self.canvas.canvasy(event.y)
+        canvas_x = self.canvas.canvasx(x)
+        canvas_y = self.canvas.canvasy(y)
         
         # 转换为原始图片坐标
         img_x = canvas_x / self.zoom_scale
         img_y = canvas_y / self.zoom_scale
         
-        # 查找鼠标位置的框
-        new_hovered = self.find_box_at_position(img_x, img_y)
+        # 查找鼠标位置的框（使用缓存）
+        new_hovered = self.find_box_at_position_cached(img_x, img_y)
         
-        # 如果高亮框改变，重新绘制
+        # 只在高亮框改变时重新绘制
         if new_hovered != self.hovered_box:
             self.hovered_box = new_hovered
             self.update_display()
     
     def find_box_at_position(self, x, y):
-        """查找指定位置的最小边界框"""
-        if not self.xml_root:
-            return None
+        """查找指定位置的最小边界框（原始版本，保留用于兼容）"""
+        return self.find_box_at_position_cached(x, y)
+    
+    def find_box_at_position_cached(self, x, y):
+        """查找指定位置的最小边界框（使用缓存优化）"""
+        # 构建当前帧的缓存（如果需要）
+        if self.current_frame not in self.boxes_cache:
+            self._build_boxes_cache()
         
-        candidates = []  # (track_id, area)
+        # 从缓存中查找
+        cache = self.boxes_cache.get(self.current_frame, [])
+        candidates = []
+        
+        for track_id, xtl, ytl, xbr, ybr, area, label in cache:
+            # 检查点是否在框内
+            if xtl <= x <= xbr and ytl <= y <= ybr:
+                candidates.append((track_id, area))
+        
+        # 返回面积最小的框
+        if candidates:
+            candidates.sort(key=lambda item: item[1])
+            return candidates[0][0]
+        
+        return None
+    
+    def _build_boxes_cache(self):
+        """构建当前帧的框缓存"""
+        if not self.xml_root:
+            return
+        
+        cache = []
         
         for track in self.xml_root.findall('track'):
             label = track.get('label')
@@ -755,16 +838,11 @@ class ImageViewer(tb.Frame):
                 xbr = float(box.get('xbr'))
                 ybr = float(box.get('ybr'))
                 
-                # 检查点是否在框内
-                if xtl <= x <= xbr and ytl <= y <= ybr:
-                    # 计算面积（用于找最小框）
-                    area = (xbr - xtl) * (ybr - ytl)
-                    candidates.append((track_id, area))
+                # 计算面积
+                area = (xbr - xtl) * (ybr - ytl)
+                
+                cache.append((track_id, xtl, ytl, xbr, ybr, area, label))
                 break
         
-        # 返回面积最小的框
-        if candidates:
-            candidates.sort(key=lambda x: x[1])  # 按面积排序
-            return candidates[0][0]  # 返回track_id
-        
-        return None
+        # 存储到缓存
+        self.boxes_cache[self.current_frame] = cache
